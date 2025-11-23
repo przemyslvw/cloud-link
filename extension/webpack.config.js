@@ -1,5 +1,6 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = {
     mode: 'production',
@@ -22,6 +23,14 @@ module.exports = {
                 use: 'ts-loader',
                 exclude: /node_modules/,
             },
+            {
+                test: /\.scss$/,
+                use: [
+                    MiniCssExtractPlugin.loader,
+                    'css-loader',
+                    'sass-loader'
+                ],
+            },
         ],
     },
     plugins: [
@@ -31,6 +40,9 @@ module.exports = {
                 { from: "popup.html", to: "." },
                 { from: "assets", to: "assets" },
             ],
+        }),
+        new MiniCssExtractPlugin({
+            filename: 'styles.css', // Or [name].css if we want per-entry styles
         }),
     ],
 };
