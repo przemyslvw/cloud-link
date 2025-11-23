@@ -1,0 +1,25 @@
+<h2 mat-dialog-title>Add New Link</h2>
+<mat-dialog-content>
+    <form [formGroup]="linkForm" class="link-form">
+        <mat-form-field appearance="outline">
+            <mat-label>Name</mat-label>
+            <input matInput formControlName="name" placeholder="Ex. Google">
+            <mat-error *ngIf="linkForm.get('name')?.invalid">Name is required</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+            <mat-label>URL</mat-label>
+            <input matInput formControlName="url" placeholder="Ex. https://google.com">
+            <mat-error *ngIf="linkForm.get('url')?.invalid">Valid URL is required (https://...)</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+            <mat-label>Description</mat-label>
+            <textarea matInput formControlName="description" placeholder="Optional description"></textarea>
+        </mat-form-field>
+    </form>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+    <button mat-button (click)="onCancel()">Cancel</button>
+    <button mat-raised-button color="primary" (click)="onSave()" [disabled]="linkForm.invalid">Save</button>
+</mat-dialog-actions>

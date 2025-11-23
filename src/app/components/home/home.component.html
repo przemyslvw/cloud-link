@@ -4,5 +4,11 @@
 
     <app-bookmarks-list></app-bookmarks-list>
 
-    <button mat-raised-button color="warn" (click)="logout()">Logout</button>
+    <div class="fab-container">
+        <button mat-fab color="primary" (click)="openAddLinkDialog()">
+            <mat-icon>add</mat-icon>
+        </button>
+    </div>
+
+    <button mat-raised-button color="warn" (click)="logout()" class="logout-btn">Logout</button>
 </div>

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Database, listVal, ref } from '@angular/fire/database';
+import { Database, listVal, ref, push, set } from '@angular/fire/database';
 import { Observable, of } from 'rxjs';
 import { Bookmark, Folder } from '../models/bookmark.model';
 
@@ -19,5 +19,16 @@ export class BookmarkService {
         if (!uid) return of([]);
         const bookmarksRef = ref(this.db, `bookmarks/${uid}/links`);
         return listVal<Bookmark>(bookmarksRef);
+    }
+
+    addBookmark(uid: string, bookmark: Partial<Bookmark>): Promise<void> {
+        const bookmarksRef = ref(this.db, `bookmarks/${uid}/links`);
+        const newBookmarkRef = push(bookmarksRef);
+        return set(newBookmarkRef, {
+            ...bookmark,
+            id: newBookmarkRef.key,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        });
     }
 }
