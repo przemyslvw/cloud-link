@@ -65,10 +65,21 @@ logoutBtn.addEventListener('click', () => {
     });
 });
 
-// Sync button handler (placeholder for now)
+// Sync button handler
 syncBtn.addEventListener('click', () => {
-    syncStatus.textContent = 'Sync functionality coming soon...';
-    setTimeout(() => {
-        syncStatus.textContent = '';
-    }, 3000);
+    syncStatus.textContent = 'Fetching bookmarks...';
+
+    chrome.runtime.sendMessage({ action: 'getAllBookmarks' }, (response) => {
+        if (response.success) {
+            const { folders, links } = response.bookmarks;
+            syncStatus.textContent = `Found ${folders.length} folders and ${links.length} links. Sync coming soon...`;
+            console.log('Bookmarks:', response.bookmarks);
+
+            setTimeout(() => {
+                syncStatus.textContent = '';
+            }, 5000);
+        } else {
+            syncStatus.textContent = 'Error: ' + (response.error || 'Unknown error');
+        }
+    });
 });
