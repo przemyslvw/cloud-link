@@ -10,7 +10,7 @@ const passwordInput = document.getElementById('password') as HTMLInputElement;
 const errorMessage = document.getElementById('error-message')!;
 const userEmailSpan = document.getElementById('user-email')!;
 const logoutBtn = document.getElementById('logout-btn')!;
-const syncBtn = document.getElementById('sync-btn')!;
+const syncBtn = document.getElementById('sync-btn') as HTMLButtonElement;
 const syncStatus = document.getElementById('sync-status')!;
 
 // Check auth state on load
@@ -67,19 +67,25 @@ logoutBtn.addEventListener('click', () => {
 
 // Sync button handler
 syncBtn.addEventListener('click', () => {
-    syncStatus.textContent = 'Fetching bookmarks...';
+    syncStatus.textContent = 'Syncing...';
+    syncBtn.disabled = true;
 
-    chrome.runtime.sendMessage({ action: 'getAllBookmarks' }, (response) => {
-        if (response.success) {
-            const { folders, links } = response.bookmarks;
-            syncStatus.textContent = `Found ${folders.length} folders and ${links.length} links. Sync coming soon...`;
-            console.log('Bookmarks:', response.bookmarks);
+    chrome.runtime.sendMessage({ action: 'syncNow' }, (response) => {
+        syncBtn.disabled = false;
+
+        if (response.success && response.result) {
+            const { pulled, pushed, conflicts } = response.result;
+            syncStatus.textContent = `Sync complete! Pulled: ${pulled}, Pushed: ${pushed}, Conflicts: ${conflicts}`;
+            console.log('Sync result:', response.result);
 
             setTimeout(() => {
                 syncStatus.textContent = '';
             }, 5000);
         } else {
-            syncStatus.textContent = 'Error: ' + (response.error || 'Unknown error');
+            syncStatus.textContent = 'Sync failed: ' + (response.error || 'Unknown error');
+            setTimeout(() => {
+                syncStatus.textContent = '';
+            }, 5000);
         }
     });
 });

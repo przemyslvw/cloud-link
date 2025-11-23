@@ -1,14 +1,11 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, User } from 'firebase/auth';
-import { firebaseConfig } from './firebase-config';
+import { signInWithEmailAndPassword, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirebaseAuth } from './firebase-instance';
 
 class AuthManager {
     private auth;
-    private app;
 
     constructor() {
-        this.app = initializeApp(firebaseConfig);
-        this.auth = getAuth(this.app);
+        this.auth = getFirebaseAuth();
         this.setupAuthListener();
     }
 
