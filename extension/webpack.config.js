@@ -29,7 +29,7 @@ module.exports = {
             patterns: [
                 { from: "manifest.json", to: "." },
                 { from: "popup.html", to: "." },
-                // { from: "assets", to: "assets" }, // Uncomment when assets folder exists
+                { from: "assets", to: "assets" },
             ],
         }),
     ],

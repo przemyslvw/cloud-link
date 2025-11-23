@@ -47,3 +47,4 @@ src/environments/
 
 #extension
 extension/node_modules
+extension/dist

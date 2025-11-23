@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/chrome": "^0.1.31",
     "chrome-types": "^0.1.390",
     "copy-webpack-plugin": "^13.0.1",
     "ts-loader": "^9.5.4",
