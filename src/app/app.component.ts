@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { TestDbService } from './test-db.service';
 
 @Component({
   selector: 'app-root',
@@ -10,4 +11,8 @@ import { RouterOutlet } from '@angular/router';
 })
 export class AppComponent {
   title = 'cloud-link';
+
+  constructor(private testDb: TestDbService) {
+    this.testDb.testConnection();
+  }
 }
