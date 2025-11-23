@@ -1,0 +1,23 @@
+<div class="bookmarks-container">
+    <h3>Folders</h3>
+    <mat-list>
+        <mat-list-item *ngFor="let folder of folders$ | async">
+            <mat-icon matListItemIcon>folder</mat-icon>
+            <div matListItemTitle>{{ folder.name }}</div>
+            <div matListItemLine>{{ folder.description }}</div>
+        </mat-list-item>
+        <div *ngIf="(folders$ | async)?.length === 0">No folders found.</div>
+    </mat-list>
+
+    <h3>Links</h3>
+    <mat-list>
+        <mat-list-item *ngFor="let bookmark of bookmarks$ | async">
+            <mat-icon matListItemIcon>link</mat-icon>
+            <div matListItemTitle>
+                <a [href]="bookmark.url" target="_blank">{{ bookmark.name }}</a>
+            </div>
+            <div matListItemLine>{{ bookmark.url }}</div>
+        </mat-list-item>
+        <div *ngIf="(bookmarks$ | async)?.length === 0">No links found.</div>
+    </mat-list>
+</div>

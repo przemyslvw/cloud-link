@@ -1,5 +1,8 @@
 <div class="home-container" *ngIf="user$ | async as user">
     <h1>Welcome, {{ user.email }}!</h1>
     <p>You are successfully logged in.</p>
+
+    <app-bookmarks-list></app-bookmarks-list>
+
     <button mat-raised-button color="warn" (click)="logout()">Logout</button>
 </div>

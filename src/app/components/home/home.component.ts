@@ -4,10 +4,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { AuthService } from '../../services/auth.service';
 import { Router } from '@angular/router';
 
+import { BookmarksListComponent } from '../bookmarks-list/bookmarks-list.component';
+
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, MatButtonModule],
+  imports: [CommonModule, MatButtonModule, BookmarksListComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss'
 })
