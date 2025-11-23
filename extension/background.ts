@@ -49,6 +49,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     console.log('Bookmark event:', type, data);
                     handleBookmarkChange();
                 });
+                // Start real-time listeners
+                syncEngine.startListening(user.uid);
             })
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -60,6 +62,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ success: true });
                 bookmarkDetector.stopListening();
                 syncEngine.stopSync();
+                syncEngine.stopListening();
             })
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;

@@ -1,4 +1,4 @@
-import { ref, get, set, update } from 'firebase/database';
+import { ref, get, set, update, onValue, off } from 'firebase/database';
 import { getFirebaseDb } from './firebase-instance';
 import { Bookmark, Folder } from '../../src/app/models/bookmark.model';
 import { bookmarkDetector } from './bookmark-detector';
@@ -22,6 +22,9 @@ export class SyncEngine {
     private isSyncing = false;
     private retryCount = 0;
     private maxRetries = 3;
+    private isListening = false;
+    private currentUid: string | null = null;
+    private ignoreNextRemoteChange = false;
 
     constructor() {
         console.log('SyncEngine initialized');
@@ -103,6 +106,10 @@ export class SyncEngine {
         }
 
         const newVersion = Math.max(localVersion.version, remoteVersion.version) + 1;
+
+        // Ignore next remote change to prevent sync loop
+        this.ignoreNextChange();
+
         await this.updateSyncVersion(uid, newVersion);
 
         return result;
@@ -223,6 +230,98 @@ export class SyncEngine {
     public stopSync() {
         this.isSyncing = false;
         console.log('Sync stopped');
+    }
+
+    // Start listening for remote changes
+    public startListening(uid: string) {
+        if (this.isListening && this.currentUid === uid) {
+            console.log('Already listening for user:', uid);
+            return;
+        }
+
+        this.stopListening();
+        this.currentUid = uid;
+        this.isListening = true;
+
+        console.log('Starting real-time listeners for user:', uid);
+
+        // Listen to folders
+        const foldersRef = ref(this.db, `bookmarks/${uid}/folders`);
+        onValue(foldersRef, (snapshot) => {
+            if (this.ignoreNextRemoteChange) {
+                this.ignoreNextRemoteChange = false;
+                return;
+            }
+
+            console.log('Remote folders changed');
+            this.handleRemoteFoldersChange(snapshot.val());
+        });
+
+        // Listen to links
+        const linksRef = ref(this.db, `bookmarks/${uid}/links`);
+        onValue(linksRef, (snapshot) => {
+            if (this.ignoreNextRemoteChange) {
+                this.ignoreNextRemoteChange = false;
+                return;
+            }
+
+            console.log('Remote links changed');
+            this.handleRemoteLinksChange(snapshot.val());
+        });
+
+        // Listen to sync version
+        const versionRef = ref(this.db, `bookmarks/${uid}/syncVersion`);
+        onValue(versionRef, (snapshot) => {
+            const remoteVersion = snapshot.val();
+            if (remoteVersion && remoteVersion.source !== 'browser') {
+                console.log('Remote sync version changed:', remoteVersion);
+                // Trigger sync if change came from web app
+                this.startSync(uid);
+            }
+        });
+    }
+
+    // Stop listening for remote changes
+    public stopListening() {
+        if (!this.isListening || !this.currentUid) {
+            return;
+        }
+
+        console.log('Stopping real-time listeners for user:', this.currentUid);
+
+        const foldersRef = ref(this.db, `bookmarks/${this.currentUid}/folders`);
+        const linksRef = ref(this.db, `bookmarks/${this.currentUid}/links`);
+        const versionRef = ref(this.db, `bookmarks/${this.currentUid}/syncVersion`);
+
+        off(foldersRef);
+        off(linksRef);
+        off(versionRef);
+
+        this.isListening = false;
+        this.currentUid = null;
+    }
+
+    // Handle remote folder changes
+    private async handleRemoteFoldersChange(remoteFolders: any) {
+        if (!remoteFolders) return;
+
+        console.log('Processing remote folder changes...');
+        // TODO: Update Chrome bookmarks based on remote changes
+        // This would involve comparing with local state and creating/updating/deleting folders
+    }
+
+    // Handle remote link changes
+    private async handleRemoteLinksChange(remoteLinks: any) {
+        if (!remoteLinks) return;
+
+        console.log('Processing remote link changes...');
+        // TODO: Update Chrome bookmarks based on remote changes
+        // This would involve comparing with local state and creating/updating/deleting links
+    }
+
+    // Mark next remote change to be ignored (to prevent sync loops)
+    public ignoreNextChange() {
+        this.ignoreNextRemoteChange = true;
     }
 }
 
