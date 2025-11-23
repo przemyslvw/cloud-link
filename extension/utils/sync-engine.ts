@@ -179,6 +179,7 @@ export class SyncEngine {
 
         const updates: any = {};
 
+        // Push/update folders
         for (const folder of localData.folders) {
             const remoteFolderExists = remoteData.folders.find(f => f.id === folder.id);
 
@@ -192,6 +193,17 @@ export class SyncEngine {
             }
         }
 
+        // Delete folders that exist remotely but not locally
+        for (const remoteFolder of remoteData.folders) {
+            const localFolderExists = localData.folders.find(f => f.id === remoteFolder.id);
+            if (!localFolderExists) {
+                updates[`bookmarks/${uid}/folders/${remoteFolder.id}`] = null;
+                pushed++;
+                console.log('Deleting remote folder:', remoteFolder.name);
+            }
+        }
+
+        // Push/update links
         for (const link of localData.links) {
             const remoteLinkExists = remoteData.links.find(l => l.id === link.id);
 
@@ -202,6 +214,16 @@ export class SyncEngine {
                 updates[`bookmarks/${uid}/links/${link.id}`] = link;
                 pushed++;
                 conflicts++;
+            }
+        }
+
+        // Delete links that exist remotely but not locally
+        for (const remoteLink of remoteData.links) {
+            const localLinkExists = localData.links.find(l => l.id === remoteLink.id);
+            if (!localLinkExists) {
+                updates[`bookmarks/${uid}/links/${remoteLink.id}`] = null;
+                pushed++;
+                console.log('Deleting remote link:', remoteLink.name);
             }
         }
 
