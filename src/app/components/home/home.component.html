@@ -5,8 +5,11 @@
     <app-bookmarks-list></app-bookmarks-list>
 
     <div class="fab-container">
-        <button mat-fab color="primary" (click)="openAddLinkDialog()">
-            <mat-icon>add</mat-icon>
+        <button mat-fab color="primary" (click)="openAddLinkDialog()" matTooltip="Add Link">
+            <mat-icon>link</mat-icon>
+        </button>
+        <button mat-fab color="accent" (click)="openAddFolderDialog()" matTooltip="Add Folder">
+            <mat-icon>create_new_folder</mat-icon>
         </button>
     </div>
 

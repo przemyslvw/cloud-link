@@ -8,6 +8,7 @@ import { BookmarkService } from '../../services/bookmark.service';
 import { Router } from '@angular/router';
 import { BookmarksListComponent } from '../bookmarks-list/bookmarks-list.component';
 import { AddLinkDialogComponent } from '../add-link-dialog/add-link-dialog.component';
+import { AddFolderDialogComponent } from '../add-folder-dialog/add-folder-dialog.component';
 import { take } from 'rxjs';
 
 @Component({
@@ -38,6 +39,20 @@ export class HomeComponent {
         this.user$.pipe(take(1)).subscribe(user => {
           if (user) {
             this.bookmarkService.addBookmark(user.uid, result);
+          }
+        });
+      }
+    });
+  }
+
+  openAddFolderDialog() {
+    const dialogRef = this.dialog.open(AddFolderDialogComponent);
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.user$.pipe(take(1)).subscribe(user => {
+          if (user) {
+            this.bookmarkService.addFolder(user.uid, result);
           }
         });
       }

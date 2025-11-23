@@ -1,0 +1,29 @@
+<h2 mat-dialog-title>Add New Folder</h2>
+<mat-dialog-content>
+    <form [formGroup]="folderForm" class="folder-form">
+        <mat-form-field appearance="outline">
+            <mat-label>Name</mat-label>
+            <input matInput formControlName="name" placeholder="Ex. Work">
+            <mat-error *ngIf="folderForm.get('name')?.invalid">Name is required</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+            <mat-label>Parent Folder</mat-label>
+            <mat-select formControlName="parentId">
+                <mat-option [value]="null">None (Root)</mat-option>
+                <mat-option *ngFor="let folder of folders$ | async" [value]="folder.id">
+                    {{ folder.name }}
+                </mat-option>
+            </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+            <mat-label>Description</mat-label>
+            <textarea matInput formControlName="description" placeholder="Optional description"></textarea>
+        </mat-form-field>
+    </form>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+    <button mat-button (click)="onCancel()">Cancel</button>
+    <button mat-raised-button color="primary" (click)="onSave()" [disabled]="folderForm.invalid">Save</button>
+</mat-dialog-actions>
