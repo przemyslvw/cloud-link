@@ -7,6 +7,10 @@ interface SyncVersion {
     version: number;
     timestamp: number;
     source: 'web' | 'browser' | 'import';
+    itemCount?: {
+        folders: number;
+        links: number;
+    };
 }
 
 interface SyncResult {
@@ -82,16 +86,27 @@ export class SyncEngine {
             errors: []
         };
 
+        // Get versions first for quick comparison
+        const localVersion = await this.getLocalSyncVersion();
+        const remoteVersion = await this.getRemoteSyncVersion(uid);
+        console.log('Versions - Local:', localVersion, 'Remote:', remoteVersion);
+
+        // Early exit: if versions match and both are from same source, skip sync
+        if (localVersion.version === remoteVersion.version &&
+            localVersion.version > 0 &&
+            localVersion.timestamp === remoteVersion.timestamp) {
+            console.log('Versions match, skipping sync');
+            return result;
+        }
+
+        // Get bookmark data
         const localData = await bookmarkDetector.getAllBookmarks();
         console.log('Local bookmarks:', localData);
 
         const remoteData = await this.getRemoteBookmarks(uid);
         console.log('Remote bookmarks:', remoteData);
 
-        const localVersion = await this.getLocalSyncVersion();
-        const remoteVersion = await this.getRemoteSyncVersion(uid);
-        console.log('Versions - Local:', localVersion, 'Remote:', remoteVersion);
-
+        // Determine sync direction
         if (remoteVersion.version > localVersion.version) {
             console.log('Remote is newer, pulling from database...');
             const pullCount = await this.pullFromRemote(uid, remoteData);
@@ -103,6 +118,7 @@ export class SyncEngine {
             result.conflicts = pushResult.conflicts;
         } else {
             console.log('Already in sync, no changes needed');
+            return result;
         }
 
         const newVersion = Math.max(localVersion.version, remoteVersion.version) + 1;
@@ -237,16 +253,24 @@ export class SyncEngine {
 
     private async updateSyncVersion(uid: string, newVersion: number): Promise<void> {
         const timestamp = Date.now();
+
+        // Get current item counts
+        const localData = await bookmarkDetector.getAllBookmarks();
+
         const syncVersion: SyncVersion = {
             version: newVersion,
             timestamp,
-            source: 'browser'
+            source: 'browser',
+            itemCount: {
+                folders: localData.folders.length,
+                links: localData.links.length
+            }
         };
 
         await set(ref(this.db, `bookmarks/${uid}/syncVersion`), syncVersion);
         await chrome.storage.local.set({ syncVersion });
 
-        console.log('Sync version updated to:', newVersion);
+        console.log('Sync version updated to:', newVersion, 'Items:', syncVersion.itemCount);
     }
 
     public stopSync() {
