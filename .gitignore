@@ -45,3 +45,5 @@ Thumbs.db
 .firebase/
 src/environments/
 
+#extension
+extension/node_modules
