@@ -1,9 +1,61 @@
 .bookmarks-container {
     padding: 20px;
+    max-width: 800px;
+    margin: 0 auto;
 }
 
-h3 {
-    margin-top: 20px;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 5px;
+.bookmark-tree {
+    background: transparent;
+}
+
+.bookmark-tree ul,
+.bookmark-tree li {
+    margin-top: 0;
+    margin-bottom: 0;
+    list-style-type: none;
+}
+
+.node-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &.link-node {
+        padding-left: 40px; // Indent links to align with folder content
+    }
+}
+
+.type-icon {
+    color: #666;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+}
+
+.node-link {
+    text-decoration: none;
+    color: inherit;
+
+    &:hover {
+        text-decoration: underline;
+        color: #1976d2;
+    }
+}
+
+.node-title {
+    font-weight: 500;
+}
+
+.example-tree-invisible {
+    display: none;
+}
+
+.mat-tree-node {
+    min-height: 40px;
+}
+
+.empty-state {
+    text-align: center;
+    color: #666;
+    margin-top: 40px;
 }

@@ -1,34 +1,16 @@
-import { ref, get, set, update, onValue, off } from 'firebase/database';
+import { ref, get, set } from 'firebase/database';
 import { getFirebaseDb } from './firebase-instance';
-import { Bookmark, Folder } from '../../src/app/models/bookmark.model';
+import { BookmarkTreeNode, SyncVersion } from '../../src/app/models/bookmark.model';
 import { bookmarkDetector } from './bookmark-detector';
-
-interface SyncVersion {
-    version: number;
-    timestamp: number;
-    source: 'web' | 'browser' | 'import';
-    itemCount?: {
-        folders: number;
-        links: number;
-    };
-}
 
 interface SyncResult {
     success: boolean;
-    pulled: number;
-    pushed: number;
-    conflicts: number;
-    errors: string[];
+    error?: string;
 }
 
 export class SyncEngine {
     private db;
     private isSyncing = false;
-    private retryCount = 0;
-    private maxRetries = 3;
-    private isListening = false;
-    private currentUid: string | null = null;
-    private ignoreNextRemoteChange = false;
 
     constructor() {
         console.log('SyncEngine initialized');
@@ -37,337 +19,212 @@ export class SyncEngine {
 
     public async startSync(uid: string): Promise<SyncResult> {
         if (this.isSyncing) {
-            return {
-                success: false,
-                pulled: 0,
-                pushed: 0,
-                conflicts: 0,
-                errors: ['Sync already in progress']
-            };
+            console.log('Sync already in progress');
+            return { success: false, error: 'Sync in progress' };
         }
 
         this.isSyncing = true;
         console.log('Starting sync for user:', uid);
 
         try {
-            const result = await this.performSync(uid);
-            this.retryCount = 0;
-            return result;
-        } catch (error: any) {
-            console.error('Sync error:', error);
+            // 1. Get Local Tree
+            const localTree = await bookmarkDetector.getBookmarkTree();
+            console.log('Local Tree:', localTree);
 
-            if (this.retryCount < this.maxRetries) {
-                this.retryCount++;
-                const delay = Math.pow(2, this.retryCount) * 1000;
-                console.log(`Retrying sync in ${delay}ms (attempt ${this.retryCount}/${this.maxRetries})`);
+            // 2. Get Remote Tree
+            const remoteTree = await this.getRemoteTree(uid);
+            console.log('Remote Tree:', remoteTree);
 
-                await new Promise(resolve => setTimeout(resolve, delay));
-                return this.startSync(uid);
+            // 3. Get Deleted URLs
+            const storageData = await chrome.storage.local.get(['deletedUrls']);
+            const deletedUrls = (storageData.deletedUrls as string[]) || [];
+            console.log('Deleted URLs to process:', deletedUrls);
+
+            // 4. Merge Trees
+            const mergedTree = this.mergeTrees(localTree, remoteTree, deletedUrls);
+            console.log('Merged Tree:', mergedTree);
+
+            // 5. Save to Remote
+            await this.saveRemoteTree(uid, mergedTree);
+
+            // 6. Clear processed deleted URLs
+            if (deletedUrls.length > 0) {
+                await chrome.storage.local.remove(['deletedUrls']);
+                console.log('Cleared processed deleted URLs');
             }
 
-            return {
-                success: false,
-                pulled: 0,
-                pushed: 0,
-                conflicts: 0,
-                errors: [error.message || 'Unknown error']
-            };
+            // 7. Apply to Browser
+            await this.applyTreeToBrowser(mergedTree);
+
+            // 8. Update Sync Version
+            await this.updateSyncVersion(uid);
+
+            return { success: true };
+
+        } catch (error: any) {
+            console.error('Sync failed:', error);
+            return { success: false, error: error.message };
         } finally {
             this.isSyncing = false;
         }
     }
 
-    private async performSync(uid: string): Promise<SyncResult> {
-        const result: SyncResult = {
-            success: true,
-            pulled: 0,
-            pushed: 0,
-            conflicts: 0,
-            errors: []
-        };
-
-        // Get versions first for quick comparison
-        const localVersion = await this.getLocalSyncVersion();
-        const remoteVersion = await this.getRemoteSyncVersion(uid);
-        console.log('Versions - Local:', localVersion, 'Remote:', remoteVersion);
-
-        // Early exit: if versions match and both are from same source, skip sync
-        if (localVersion.version === remoteVersion.version &&
-            localVersion.version > 0 &&
-            localVersion.timestamp === remoteVersion.timestamp) {
-            console.log('Versions match, skipping sync');
-            return result;
+    private async getRemoteTree(uid: string): Promise<BookmarkTreeNode[]> {
+        const treeRef = ref(this.db, `bookmarks/${uid}/tree`);
+        const snapshot = await get(treeRef);
+        if (snapshot.exists()) {
+            return snapshot.val() as BookmarkTreeNode[];
         }
-
-        // Get bookmark data
-        const localData = await bookmarkDetector.getAllBookmarks();
-        console.log('Local bookmarks:', localData);
-
-        const remoteData = await this.getRemoteBookmarks(uid);
-        console.log('Remote bookmarks:', remoteData);
-
-        // Determine sync direction
-        if (remoteVersion.version > localVersion.version) {
-            console.log('Remote is newer, pulling from database...');
-            const pullCount = await this.pullFromRemote(uid, remoteData);
-            result.pulled = pullCount;
-        } else if (localVersion.version > remoteVersion.version || this.hasLocalChanges(localData, remoteData)) {
-            console.log('Local has changes, pushing to database...');
-            const pushResult = await this.pushToRemote(uid, localData, remoteData);
-            result.pushed = pushResult.pushed;
-            result.conflicts = pushResult.conflicts;
-        } else {
-            console.log('Already in sync, no changes needed');
-            return result;
-        }
-
-        const newVersion = Math.max(localVersion.version, remoteVersion.version) + 1;
-
-        // Ignore next remote change to prevent sync loop
-        this.ignoreNextChange();
-
-        await this.updateSyncVersion(uid, newVersion);
-
-        return result;
+        return [];
     }
 
-    private async getRemoteBookmarks(uid: string): Promise<{ folders: Folder[], links: Bookmark[] }> {
-        const foldersRef = ref(this.db, `bookmarks/${uid}/folders`);
-        const linksRef = ref(this.db, `bookmarks/${uid}/links`);
+    private async saveRemoteTree(uid: string, tree: BookmarkTreeNode[]) {
+        const treeRef = ref(this.db, `bookmarks/${uid}/tree`);
+        const sanitizedTree = this.sanitizeTree(tree);
+        await set(treeRef, sanitizedTree);
+        console.log('Saved tree to remote');
+    }
 
-        const [foldersSnapshot, linksSnapshot] = await Promise.all([
-            get(foldersRef),
-            get(linksRef)
-        ]);
+    // Helper to remove undefined values which Firebase rejects
+    private sanitizeTree(nodes: BookmarkTreeNode[]): BookmarkTreeNode[] {
+        return nodes.map(node => {
+            const cleanNode: any = { ...node };
 
-        const folders: Folder[] = [];
-        const links: Bookmark[] = [];
+            // Recursively sanitize children
+            if (cleanNode.children) {
+                cleanNode.children = this.sanitizeTree(cleanNode.children);
+            }
 
-        if (foldersSnapshot.exists()) {
-            const foldersData = foldersSnapshot.val();
-            Object.values(foldersData).forEach((folder: any) => {
-                if (folder && folder.id) {
-                    folders.push(folder);
+            // Remove undefined keys
+            Object.keys(cleanNode).forEach(key => {
+                if (cleanNode[key] === undefined) {
+                    delete cleanNode[key];
                 }
             });
-        }
 
-        if (linksSnapshot.exists()) {
-            const linksData = linksSnapshot.val();
-            Object.values(linksData).forEach((link: any) => {
-                if (link && link.id) {
-                    links.push(link);
-                }
+            return cleanNode;
+        });
+    }
+
+    // Merge Logic: Local is primary for IDs, Remote adds missing content
+    private mergeTrees(localNodes: BookmarkTreeNode[], remoteNodes: BookmarkTreeNode[], deletedUrls: string[] = []): BookmarkTreeNode[] {
+        const merged: BookmarkTreeNode[] = [];
+        const usedRemoteIds = new Set<string>();
+
+        // 1. Iterate Local Nodes
+        for (const localNode of localNodes) {
+            // Find matching Remote Node
+            // Match by URL (for links) or Title (for folders)
+            // We assume folders with same name in same location are same
+            const remoteMatch = remoteNodes.find(r => {
+                if (localNode.url && r.url) return localNode.url === r.url; // Link match
+                if (!localNode.url && !r.url) return localNode.title === r.title; // Folder match
+                return false;
             });
-        }
 
-        return { folders, links };
-    }
+            if (remoteMatch) {
+                // Match found! Merge them.
+                usedRemoteIds.add(remoteMatch.id);
 
-    private async getLocalSyncVersion(): Promise<SyncVersion> {
-        const data = await chrome.storage.local.get(['syncVersion']);
-        return (data.syncVersion as SyncVersion) || { version: 0, timestamp: 0, source: 'browser' };
-    }
-
-    private async getRemoteSyncVersion(uid: string): Promise<SyncVersion> {
-        const versionRef = ref(this.db, `bookmarks/${uid}/syncVersion`);
-        const snapshot = await get(versionRef);
-        return snapshot.exists() ? snapshot.val() : { version: 0, timestamp: 0, source: 'web' };
-    }
-
-    private hasLocalChanges(local: { folders: Folder[], links: Bookmark[] }, remote: { folders: Folder[], links: Bookmark[] }): boolean {
-        return local.folders.length !== remote.folders.length ||
-            local.links.length !== remote.links.length;
-    }
-
-    private async pullFromRemote(uid: string, remoteData: { folders: Folder[], links: Bookmark[] }): Promise<number> {
-        console.log('Pull from remote not yet implemented');
-        return 0;
-    }
-
-    private async pushToRemote(
-        uid: string,
-        localData: { folders: Folder[], links: Bookmark[] },
-        remoteData: { folders: Folder[], links: Bookmark[] }
-    ): Promise<{ pushed: number, conflicts: number }> {
-        let pushed = 0;
-        let conflicts = 0;
-
-        const updates: any = {};
-
-        // Push/update folders
-        for (const folder of localData.folders) {
-            const remoteFolderExists = remoteData.folders.find(f => f.id === folder.id);
-
-            if (!remoteFolderExists) {
-                updates[`bookmarks/${uid}/folders/${folder.id}`] = folder;
-                pushed++;
-            } else if (folder.updatedAt > remoteFolderExists.updatedAt) {
-                updates[`bookmarks/${uid}/folders/${folder.id}`] = folder;
-                pushed++;
-                conflicts++;
+                const mergedNode: BookmarkTreeNode = {
+                    ...localNode, // Keep local ID and props
+                    children: this.mergeTrees(localNode.children || [], remoteMatch.children || [], deletedUrls)
+                };
+                merged.push(mergedNode);
+            } else {
+                // No match in remote, keep local
+                merged.push(localNode);
             }
         }
 
-        // Delete folders that exist remotely but not locally
-        for (const remoteFolder of remoteData.folders) {
-            const localFolderExists = localData.folders.find(f => f.id === remoteFolder.id);
-            if (!localFolderExists) {
-                updates[`bookmarks/${uid}/folders/${remoteFolder.id}`] = null;
-                pushed++;
-                console.log('Deleting remote folder:', remoteFolder.name);
+        // 2. Add remaining Remote Nodes (that weren't matched)
+        for (const remoteNode of remoteNodes) {
+            if (!usedRemoteIds.has(remoteNode.id)) {
+                // Check if this remote node was deleted locally
+                if (remoteNode.url && deletedUrls.includes(remoteNode.url)) {
+                    console.log('Skipping deleted remote bookmark:', remoteNode.title, remoteNode.url);
+                    continue;
+                }
+
+                // This is a new node from remote
+                // We keep it as is, but when applying to browser, we'll need to create it
+                merged.push(remoteNode);
             }
         }
 
-        // Push/update links
-        for (const link of localData.links) {
-            const remoteLinkExists = remoteData.links.find(l => l.id === link.id);
-
-            if (!remoteLinkExists) {
-                updates[`bookmarks/${uid}/links/${link.id}`] = link;
-                pushed++;
-            } else if (link.updatedAt > remoteLinkExists.updatedAt) {
-                updates[`bookmarks/${uid}/links/${link.id}`] = link;
-                pushed++;
-                conflicts++;
-            }
-        }
-
-        // Delete links that exist remotely but not locally
-        for (const remoteLink of remoteData.links) {
-            const localLinkExists = localData.links.find(l => l.id === remoteLink.id);
-            if (!localLinkExists) {
-                updates[`bookmarks/${uid}/links/${remoteLink.id}`] = null;
-                pushed++;
-                console.log('Deleting remote link:', remoteLink.name);
-            }
-        }
-
-        if (Object.keys(updates).length > 0) {
-            await update(ref(this.db), updates);
-            console.log(`Pushed ${pushed} items (${conflicts} conflicts resolved)`);
-        }
-
-        return { pushed, conflicts };
+        return merged;
     }
 
-    private async updateSyncVersion(uid: string, newVersion: number): Promise<void> {
-        const timestamp = Date.now();
+    private async applyTreeToBrowser(mergedTree: BookmarkTreeNode[]) {
+        // We need to map the merged tree back to the browser
+        // The merged tree contains:
+        // - Nodes with existing Local IDs (we skip or update these)
+        // - Nodes with Remote IDs (we need to create these)
 
-        // Get current item counts
-        const localData = await bookmarkDetector.getAllBookmarks();
+        // We can't easily "update" the root nodes (Bar, Other), so we iterate their children
+        // But wait, getBookmarkTree returns children of Root.
+        // So mergedTree corresponds to [Bookmarks Bar, Other Bookmarks, Mobile Bookmarks] usually.
 
-        const syncVersion: SyncVersion = {
-            version: newVersion,
-            timestamp,
-            source: 'browser',
-            itemCount: {
-                folders: localData.folders.length,
-                links: localData.links.length
+        // We need to match these top-level folders to actual Chrome roots
+        const chromeRoots = await chrome.bookmarks.getTree();
+        const actualRoots = chromeRoots[0].children || [];
+
+        for (const mergedRoot of mergedTree) {
+            // Find corresponding actual root
+            const targetRoot = actualRoots.find(r => r.title === mergedRoot.title) || actualRoots.find(r => r.id === mergedRoot.id);
+
+            if (targetRoot) {
+                // Recursively apply children to this root
+                await this.applyChildren(targetRoot.id, mergedRoot.children || []);
+            } else {
+                // If top level folder doesn't exist (unlikely for standard roots), create it?
+                // Chrome won't let us create roots, but maybe it's a custom folder synced from elsewhere
+                console.warn('Could not find local root for:', mergedRoot.title);
             }
+        }
+    }
+
+    private async applyChildren(parentId: string, nodes: BookmarkTreeNode[]) {
+        // Get current children of this parent to check for existence
+        const currentChildren = await chrome.bookmarks.getChildren(parentId);
+
+        for (const node of nodes) {
+            // Check if this node already exists locally
+            // We check by URL (link) or Title (folder)
+            const existing = currentChildren.find(c => {
+                if (node.url) return c.url === node.url;
+                return c.title === node.title;
+            });
+
+            if (existing) {
+                // Exists. If it's a folder, recurse.
+                if (!node.url && node.children) {
+                    await this.applyChildren(existing.id, node.children);
+                }
+                // If it's a link, we assume it's synced (or we could update title/url if changed)
+            } else {
+                // Does not exist. Create it.
+                const created = await chrome.bookmarks.create({
+                    parentId: parentId,
+                    title: node.title,
+                    url: node.url
+                });
+
+                // If it's a folder, recurse to create its children
+                if (!node.url && node.children) {
+                    await this.applyChildren(created.id, node.children);
+                }
+            }
+        }
+    }
+
+    private async updateSyncVersion(uid: string) {
+        const version: SyncVersion = {
+            version: Date.now(),
+            timestamp: Date.now(),
+            source: 'browser'
         };
-
-        await set(ref(this.db, `bookmarks/${uid}/syncVersion`), syncVersion);
-        await chrome.storage.local.set({ syncVersion });
-
-        console.log('Sync version updated to:', newVersion, 'Items:', syncVersion.itemCount);
-    }
-
-    public stopSync() {
-        this.isSyncing = false;
-        console.log('Sync stopped');
-    }
-
-    // Start listening for remote changes
-    public startListening(uid: string) {
-        if (this.isListening && this.currentUid === uid) {
-            console.log('Already listening for user:', uid);
-            return;
-        }
-
-        this.stopListening();
-        this.currentUid = uid;
-        this.isListening = true;
-
-        console.log('Starting real-time listeners for user:', uid);
-
-        // Listen to folders
-        const foldersRef = ref(this.db, `bookmarks/${uid}/folders`);
-        onValue(foldersRef, (snapshot) => {
-            if (this.ignoreNextRemoteChange) {
-                this.ignoreNextRemoteChange = false;
-                return;
-            }
-
-            console.log('Remote folders changed');
-            this.handleRemoteFoldersChange(snapshot.val());
-        });
-
-        // Listen to links
-        const linksRef = ref(this.db, `bookmarks/${uid}/links`);
-        onValue(linksRef, (snapshot) => {
-            if (this.ignoreNextRemoteChange) {
-                this.ignoreNextRemoteChange = false;
-                return;
-            }
-
-            console.log('Remote links changed');
-            this.handleRemoteLinksChange(snapshot.val());
-        });
-
-        // Listen to sync version
-        const versionRef = ref(this.db, `bookmarks/${uid}/syncVersion`);
-        onValue(versionRef, (snapshot) => {
-            const remoteVersion = snapshot.val();
-            if (remoteVersion && remoteVersion.source !== 'browser') {
-                console.log('Remote sync version changed:', remoteVersion);
-                // Trigger sync if change came from web app
-                this.startSync(uid);
-            }
-        });
-    }
-
-    // Stop listening for remote changes
-    public stopListening() {
-        if (!this.isListening || !this.currentUid) {
-            return;
-        }
-
-        console.log('Stopping real-time listeners for user:', this.currentUid);
-
-        const foldersRef = ref(this.db, `bookmarks/${this.currentUid}/folders`);
-        const linksRef = ref(this.db, `bookmarks/${this.currentUid}/links`);
-        const versionRef = ref(this.db, `bookmarks/${this.currentUid}/syncVersion`);
-
-        off(foldersRef);
-        off(linksRef);
-        off(versionRef);
-
-        this.isListening = false;
-        this.currentUid = null;
-    }
-
-    // Handle remote folder changes
-    private async handleRemoteFoldersChange(remoteFolders: any) {
-        if (!remoteFolders) return;
-
-        console.log('Processing remote folder changes...');
-        // TODO: Update Chrome bookmarks based on remote changes
-        // This would involve comparing with local state and creating/updating/deleting folders
-    }
-
-    // Handle remote link changes
-    private async handleRemoteLinksChange(remoteLinks: any) {
-        if (!remoteLinks) return;
-
-        console.log('Processing remote link changes...');
-        // TODO: Update Chrome bookmarks based on remote changes
-        // This would involve comparing with local state and creating/updating/deleting links
-    }
-
-    // Mark next remote change to be ignored (to prevent sync loops)
-    public ignoreNextChange() {
-        this.ignoreNextRemoteChange = true;
+        await set(ref(this.db, `bookmarks/${uid}/syncVersion`), version);
     }
 }
 

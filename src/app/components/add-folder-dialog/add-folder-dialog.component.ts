@@ -8,7 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatSelectModule } from '@angular/material/select';
 import { BookmarkService } from '../../services/bookmark.service';
 import { AuthService } from '../../services/auth.service';
-import { Folder } from '../../models/bookmark.model';
+// import { Folder } from '../../models/bookmark.model'; // Removed
 import { Observable, of, switchMap } from 'rxjs';
 
 @Component({
@@ -32,7 +32,8 @@ export class AddFolderDialogComponent implements OnInit {
   private bookmarkService = inject(BookmarkService);
   private authService = inject(AuthService);
 
-  folders$: Observable<Folder[]> = of([]);
+  // folders$: Observable<Folder[]> = of([]); // Commented out for now
+  folders$: Observable<any[]> = of([]);
 
   folderForm: FormGroup = this.fb.group({
     name: ['', Validators.required],
@@ -41,9 +42,12 @@ export class AddFolderDialogComponent implements OnInit {
   });
 
   ngOnInit() {
+    // TODO: Re-implement folder selection using tree structure if needed
+    /*
     this.folders$ = this.authService.user$.pipe(
       switchMap(user => user ? this.bookmarkService.getFolders(user.uid) : of([]))
     );
+    */
   }
 
   onCancel(): void {

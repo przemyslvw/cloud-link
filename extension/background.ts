@@ -49,8 +49,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     console.log('Bookmark event:', type, data);
                     handleBookmarkChange();
                 });
-                // Start real-time listeners
-                syncEngine.startListening(user.uid);
+                // Start real-time listeners - TODO: Re-implement in SyncEngine if needed
+                // syncEngine.startListening(user.uid);
             })
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -61,8 +61,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             .then(() => {
                 sendResponse({ success: true });
                 bookmarkDetector.stopListening();
-                syncEngine.stopSync();
-                syncEngine.stopListening();
+                // syncEngine.stopSync();
+                // syncEngine.stopListening();
             })
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -76,7 +76,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'getAllBookmarks') {
-        bookmarkDetector.getAllBookmarks()
+        bookmarkDetector.getBookmarkTree()
             .then(bookmarks => sendResponse({ success: true, bookmarks }))
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;

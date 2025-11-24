@@ -1,15 +1,4 @@
-import { Bookmark, Folder } from '../../src/app/models/bookmark.model';
-
-interface ChromeBookmarkNode {
-    id: string;
-    parentId?: string;
-    index?: number;
-    url?: string;
-    title: string;
-    dateAdded?: number;
-    dateGroupModified?: number;
-    children?: ChromeBookmarkNode[];
-}
+import { BookmarkTreeNode } from '../../src/app/models/bookmark.model';
 
 export class BookmarkDetector {
     private onChangeCallback?: (type: 'created' | 'removed' | 'changed', data: any) => void;
@@ -48,33 +37,24 @@ export class BookmarkDetector {
     }
 
     private handleCreated(id: string, bookmark: chrome.bookmarks.BookmarkTreeNode) {
-        if (bookmark.url) {
-            // It's a link
-            const link: Partial<Bookmark> = {
-                id: id,
-                folderId: bookmark.parentId || 'root',
-                name: bookmark.title,
-                url: bookmark.url,
-                createdAt: bookmark.dateAdded || Date.now(),
-                updatedAt: Date.now()
-            };
-            this.onChangeCallback?.('created', { type: 'link', data: link });
-        } else {
-            // It's a folder
-            const folder: Partial<Folder> = {
-                id: id,
-                parentId: bookmark.parentId || null,
-                name: bookmark.title,
-                createdAt: bookmark.dateAdded || Date.now(),
-                updatedAt: Date.now(),
-                children: []
-            };
-            this.onChangeCallback?.('created', { type: 'folder', data: folder });
-        }
+        // TODO: Adapt to new tree structure events if needed for real-time sync
+        // For now, we rely on full re-sync or specific event handling
+        this.onChangeCallback?.('created', { id, bookmark });
     }
 
-    private handleRemoved(id: string, removeInfo: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) {
+    private async handleRemoved(id: string, removeInfo: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) {
         this.onChangeCallback?.('removed', { id, parentId: removeInfo.parentId });
+
+        // Track deleted URL for sync
+        if (removeInfo.node && removeInfo.node.url) {
+            console.log('Tracking deleted URL:', removeInfo.node.url);
+            const data = await chrome.storage.local.get(['deletedUrls']);
+            const deletedUrls = (data.deletedUrls as string[]) || [];
+            if (!deletedUrls.includes(removeInfo.node.url)) {
+                deletedUrls.push(removeInfo.node.url);
+                await chrome.storage.local.set({ deletedUrls });
+            }
+        }
     }
 
     private handleChanged(id: string, changeInfo: { title: string; url?: string }) {
@@ -82,7 +62,6 @@ export class BookmarkDetector {
     }
 
     private handleMoved(id: string, moveInfo: { parentId: string; index: number; oldParentId: string; oldIndex: number }) {
-        // Treat move as a change
         this.onChangeCallback?.('changed', {
             id,
             changeInfo: {
@@ -92,67 +71,45 @@ export class BookmarkDetector {
         });
     }
 
-    // Get all bookmarks from Chrome
-    public async getAllBookmarks(): Promise<{ folders: Folder[], links: Bookmark[] }> {
+    // Get all bookmarks from Chrome as a Tree
+    public async getBookmarkTree(): Promise<BookmarkTreeNode[]> {
         const tree = await chrome.bookmarks.getTree();
-        return this.parseBookmarkTree(tree[0]);
+        // The root node (id: '0') usually contains 'Bookmarks Bar', 'Other Bookmarks', etc.
+        // We want to return the children of the root node to be consistent
+        return this.mapChromeTreeToModel(tree[0].children || []);
     }
 
-    // Parse Chrome bookmark tree to our format
-    private parseBookmarkTree(node: chrome.bookmarks.BookmarkTreeNode, parentId: string | null = null): { folders: Folder[], links: Bookmark[] } {
-        const folders: Folder[] = [];
-        const links: Bookmark[] = [];
-
-        if (node.children) {
-            // This is a folder
-            if (node.id !== '0') { // Skip root node
-                const folder: Folder = {
-                    id: node.id,
-                    parentId: parentId,
-                    name: node.title || 'Unnamed Folder',
-                    createdAt: node.dateAdded || Date.now(),
-                    updatedAt: node.dateGroupModified || Date.now(),
-                    children: node.children.map(child => child.id)
-                };
-                folders.push(folder);
-            }
-
-            // Process children
-            for (const child of node.children) {
-                const result = this.parseBookmarkTree(child, node.id === '0' ? null : node.id);
-                folders.push(...result.folders);
-                links.push(...result.links);
-            }
-        } else if (node.url) {
-            // This is a link
-            const link: Bookmark = {
+    private mapChromeTreeToModel(nodes: chrome.bookmarks.BookmarkTreeNode[]): BookmarkTreeNode[] {
+        return nodes.map(node => {
+            const modelNode: BookmarkTreeNode = {
                 id: node.id,
-                folderId: parentId || 'root',
-                name: node.title || 'Unnamed Link',
+                parentId: node.parentId,
+                index: node.index,
+                title: node.title,
                 url: node.url,
-                createdAt: node.dateAdded || Date.now(),
-                updatedAt: Date.now()
+                dateAdded: node.dateAdded,
+                dateGroupModified: node.dateGroupModified,
+                children: node.children ? this.mapChromeTreeToModel(node.children) : undefined
             };
-            links.push(link);
-        }
-
-        return { folders, links };
+            return modelNode;
+        });
     }
 
-    // Get specific bookmark by ID
-    public async getBookmarkById(id: string): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
-        try {
-            const results = await chrome.bookmarks.get(id);
-            return results[0] || null;
-        } catch (error) {
-            console.error('Error getting bookmark:', error);
-            return null;
+    // Helper to clear all bookmarks (use with caution!)
+    public async clearAllBookmarks() {
+        const tree = await chrome.bookmarks.getTree();
+        const rootChildren = tree[0].children || [];
+        for (const child of rootChildren) {
+            // We can't remove the root folders (Bar, Other, Mobile), but we can empty them
+            if (child.children) {
+                for (const subChild of child.children) {
+                    await chrome.bookmarks.removeTree(subChild.id);
+                }
+            }
         }
     }
 
     public stopListening() {
-        // Chrome doesn't provide a way to remove specific listeners
-        // We can only set the callback to null
         this.onChangeCallback = undefined;
         console.log('Stopped listening for bookmark changes');
     }

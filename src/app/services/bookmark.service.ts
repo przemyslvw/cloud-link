@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { Database, listVal, ref, push, set, runTransaction } from '@angular/fire/database';
+import { Database, objectVal, ref, set } from '@angular/fire/database';
 import { Observable, of } from 'rxjs';
-import { Bookmark, Folder } from '../models/bookmark.model';
+import { map } from 'rxjs/operators';
+import { BookmarkTreeNode } from '../models/bookmark.model';
 
 @Injectable({
     providedIn: 'root'
@@ -9,78 +10,28 @@ import { Bookmark, Folder } from '../models/bookmark.model';
 export class BookmarkService {
     private db = inject(Database);
 
-    getFolders(uid: string): Observable<Folder[]> {
+    getBookmarkTree(uid: string): Observable<BookmarkTreeNode[]> {
         if (!uid) return of([]);
-        const foldersRef = ref(this.db, `bookmarks/${uid}/folders`);
-        return listVal<Folder>(foldersRef);
+        const treeRef = ref(this.db, `bookmarks/${uid}/tree`);
+        return objectVal<any>(treeRef).pipe(
+            map(data => {
+                if (!data) return [];
+                if (Array.isArray(data)) return data;
+                return Object.values(data);
+            })
+        );
     }
 
-    getBookmarks(uid: string): Observable<Bookmark[]> {
-        if (!uid) return of([]);
-        const bookmarksRef = ref(this.db, `bookmarks/${uid}/links`);
-        return listVal<Bookmark>(bookmarksRef);
+    // TODO: Implement tree manipulation methods (add/move/delete) if needed for the web app
+    // For now, the web app is primarily a viewer or needs a major refactor to support tree editing
+
+    async addBookmark(uid: string, bookmark: any): Promise<void> {
+        console.warn('addBookmark not implemented for tree structure yet');
+        return Promise.resolve();
     }
 
-    addBookmark(uid: string, bookmark: Partial<Bookmark>): Promise<void> {
-        const bookmarksRef = ref(this.db, `bookmarks/${uid}/links`);
-        const newBookmarkRef = push(bookmarksRef);
-        return set(newBookmarkRef, {
-            ...bookmark,
-            id: newBookmarkRef.key,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-        });
-    }
-
-    async addFolder(uid: string, folder: Partial<Folder>): Promise<void> {
-        const foldersRef = ref(this.db, `bookmarks/${uid}/folders`);
-        const newFolderRef = push(foldersRef);
-        const folderId = newFolderRef.key;
-
-        const folderData = {
-            ...folder,
-            id: folderId,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            children: []
-        };
-
-        await set(newFolderRef, folderData);
-
-        if (folder.parentId) {
-            // Update parent's children array
-            // We need to fetch the parent first to get existing children or just push to a children node if structure allows.
-            // Based on the interface 'children: string[]', it's an array.
-            // In Firebase Realtime DB, arrays can be tricky. It's often better to use a map for children, but let's stick to the model for now.
-            // Actually, to be safe with concurrent updates, we should use a transaction or just append to a list if we change structure.
-            // But for now, let's just read and update.
-
-            // A better approach for Realtime DB is storing children as keys: children: { [childId]: true }
-            // But the model says string[]. Let's assume we read it, modify it, and write it back.
-            // OR, we can just use a transaction on the parent node.
-
-            const parentRef = ref(this.db, `bookmarks/${uid}/folders/${folder.parentId}`);
-            // For simplicity in this phase, let's just update.
-            // Ideally we would change the model to use a map for children.
-
-            // Let's try to use a transaction to append the child ID.
-            // However, 'runTransaction' needs to be imported.
-            // Let's stick to a simpler read-modify-write for this MVP or just assume we can update it.
-
-            // Let's import get and update.
-            // Actually, let's just use 'update' to add it to a 'children' object if we can change the model?
-            // User specified 'children?: string[]'.
-
-            // Let's do a transaction.
-            await runTransaction(parentRef, (currentData) => {
-                if (currentData) {
-                    if (!currentData.children) {
-                        currentData.children = [];
-                    }
-                    currentData.children.push(folderId);
-                }
-                return currentData;
-            });
-        }
+    async addFolder(uid: string, folder: any): Promise<void> {
+        console.warn('addFolder not implemented for tree structure yet');
+        return Promise.resolve();
     }
 }
