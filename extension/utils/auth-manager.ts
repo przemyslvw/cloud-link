@@ -34,6 +34,7 @@ class AuthManager {
     }
 
     async getCurrentUser(): Promise<User | null> {
+        await this.auth.authStateReady();
         return this.auth.currentUser;
     }
 
