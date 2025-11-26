@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Database, objectVal, ref, set } from '@angular/fire/database';
-import { Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable, of, firstValueFrom } from 'rxjs';
+import { map, take } from 'rxjs/operators';
 import { BookmarkTreeNode } from '../models/bookmark.model';
 
 @Injectable({
@@ -24,6 +24,28 @@ export class BookmarkService {
 
     // TODO: Implement tree manipulation methods (add/move/delete) if needed for the web app
     // For now, the web app is primarily a viewer or needs a major refactor to support tree editing
+
+    async deleteBookmark(uid: string, nodeId: string): Promise<void> {
+        const treeRef = ref(this.db, `bookmarks/${uid}/tree`);
+        const currentTree = await firstValueFrom(this.getBookmarkTree(uid).pipe(take(1)));
+
+        if (!currentTree || currentTree.length === 0) return;
+
+        const updatedTree = this.removeNodeFromTree(currentTree, nodeId);
+        await set(treeRef, updatedTree);
+    }
+
+    private removeNodeFromTree(nodes: BookmarkTreeNode[], nodeId: string): BookmarkTreeNode[] {
+        return nodes.filter(node => {
+            if (node.id === nodeId) {
+                return false;
+            }
+            if (node.children) {
+                node.children = this.removeNodeFromTree(node.children, nodeId);
+            }
+            return true;
+        });
+    }
 
     async addBookmark(uid: string, bookmark: any): Promise<void> {
         console.warn('addBookmark not implemented for tree structure yet');

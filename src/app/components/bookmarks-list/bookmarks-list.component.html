@@ -7,6 +7,9 @@
             <div class="node-content link-node">
                 <mat-icon class="type-icon">link</mat-icon>
                 <a [href]="node.url" target="_blank" class="node-link">{{ node.title }}</a>
+                <button mat-icon-button color="warn" (click)="deleteNode(node)" matTooltip="Delete">
+                    <mat-icon>delete</mat-icon>
+                </button>
             </div>
         </mat-tree-node>
 
