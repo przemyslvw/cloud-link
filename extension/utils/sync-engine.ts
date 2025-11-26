@@ -6,6 +6,9 @@ import { bookmarkDetector } from './bookmark-detector';
 interface SyncResult {
     success: boolean;
     error?: string;
+    pulled?: number;
+    pushed?: number;
+    conflicts?: number;
 }
 
 export class SyncEngine {
@@ -26,6 +29,9 @@ export class SyncEngine {
         this.isSyncing = true;
         console.log('Starting sync for user:', uid);
 
+        let pulledCount = 0;
+        let pushedCount = 0;
+
         try {
             // 1. Get Local Tree
             const localTree = await bookmarkDetector.getBookmarkTree();
@@ -41,8 +47,11 @@ export class SyncEngine {
             console.log('Deleted URLs to process:', deletedUrls);
 
             // 4. Merge Trees
-            const mergedTree = this.mergeTrees(localTree, remoteTree, deletedUrls);
+            const { mergedTree, addedFromRemote, addedFromLocal } = this.mergeTreesWithStats(localTree, remoteTree, deletedUrls);
             console.log('Merged Tree:', mergedTree);
+
+            pulledCount = addedFromRemote;
+            pushedCount = addedFromLocal; // Approximate, as we save the whole tree to remote anyway
 
             // 5. Save to Remote
             await this.saveRemoteTree(uid, mergedTree);
@@ -59,7 +68,12 @@ export class SyncEngine {
             // 8. Update Sync Version
             await this.updateSyncVersion(uid);
 
-            return { success: true };
+            return {
+                success: true,
+                pulled: pulledCount,
+                pushed: pushedCount,
+                conflicts: 0 // We resolve conflicts automatically for now
+            };
 
         } catch (error: any) {
             console.error('Sync failed:', error);
@@ -106,10 +120,12 @@ export class SyncEngine {
         });
     }
 
-    // Merge Logic: Local is primary for IDs, Remote adds missing content
-    private mergeTrees(localNodes: BookmarkTreeNode[], remoteNodes: BookmarkTreeNode[], deletedUrls: string[] = []): BookmarkTreeNode[] {
+    // Merge Logic with Stats
+    private mergeTreesWithStats(localNodes: BookmarkTreeNode[], remoteNodes: BookmarkTreeNode[], deletedUrls: string[] = []): { mergedTree: BookmarkTreeNode[], addedFromRemote: number, addedFromLocal: number } {
         const merged: BookmarkTreeNode[] = [];
         const usedRemoteIds = new Set<string>();
+        let addedFromRemote = 0;
+        let addedFromLocal = 0;
 
         // 1. Iterate Local Nodes
         for (const localNode of localNodes) {
@@ -129,13 +145,21 @@ export class SyncEngine {
                 // Match found! Merge them.
                 usedRemoteIds.add(remoteMatch.id);
 
+                const childStats = this.mergeTreesWithStats(localNode.children || [], remoteMatch.children || [], deletedUrls);
+                addedFromRemote += childStats.addedFromRemote;
+                addedFromLocal += childStats.addedFromLocal;
+
                 const mergedNode: BookmarkTreeNode = {
                     ...localNode, // Keep local ID and props
-                    children: this.mergeTrees(localNode.children || [], remoteMatch.children || [], deletedUrls)
+                    children: childStats.mergedTree
                 };
                 merged.push(mergedNode);
             } else {
-                // No match in remote, keep local
+                // No match in remote, keep local (this counts as "pushed" to remote)
+                addedFromLocal++;
+                // Also count children as pushed? Or just the root? Let's count recursively.
+                addedFromLocal += this.countNodes(localNode.children || []);
+
                 merged.push(localNode);
             }
         }
@@ -149,12 +173,26 @@ export class SyncEngine {
                     continue;
                 }
 
-                // This is a new node from remote
+                // This is a new node from remote (this counts as "pulled")
+                addedFromRemote++;
+                addedFromRemote += this.countNodes(remoteNode.children || []);
+
                 merged.push(remoteNode);
             }
         }
 
-        return merged;
+        return { mergedTree: merged, addedFromRemote, addedFromLocal };
+    }
+
+    private countNodes(nodes: BookmarkTreeNode[]): number {
+        let count = 0;
+        for (const node of nodes) {
+            count++;
+            if (node.children) {
+                count += this.countNodes(node.children);
+            }
+        }
+        return count;
     }
 
     private async applyTreeToBrowser(mergedTree: BookmarkTreeNode[]) {
