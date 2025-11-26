@@ -2,6 +2,7 @@ import { ref, get, set } from 'firebase/database';
 import { getFirebaseDb } from './firebase-instance';
 import { BookmarkTreeNode, SyncVersion } from '../../src/app/models/bookmark.model';
 import { bookmarkDetector } from './bookmark-detector';
+import { versionManager } from './version-manager';
 
 interface SyncResult {
     success: boolean;
@@ -33,6 +34,39 @@ export class SyncEngine {
         let pushedCount = 0;
 
         try {
+            // 0. Check Versions
+            const localVersion = await versionManager.getLocalVersion();
+            const metadataRef = ref(this.db, `bookmarks/${uid}/metadata`);
+            const metadataSnapshot = await get(metadataRef);
+            const remoteVersion = metadataSnapshot.exists() ? metadataSnapshot.val() as SyncVersion : null;
+
+            console.log('Sync Check - Local:', localVersion, 'Remote:', remoteVersion);
+
+            // If remote is newer, PULL ONLY
+            if (remoteVersion && remoteVersion.timestamp > localVersion.timestamp) {
+                console.log('Remote is newer. Pulling from server...');
+
+                // 1. Get Remote Tree
+                const remoteTree = await this.getRemoteTree(uid);
+                console.log('Remote Tree:', remoteTree);
+
+                // 2. Apply to Browser (Overwrite/Update)
+                await this.applyTreeToBrowser(remoteTree);
+
+                // 3. Update Local Version to match Remote
+                await versionManager.updateLocalVersion(remoteVersion);
+
+                return {
+                    success: true,
+                    pulled: this.countNodes(remoteTree),
+                    pushed: 0,
+                    conflicts: 0
+                };
+            }
+
+            // Otherwise, proceed with Merge (Push/Sync)
+            console.log('Local is newer or equal. Merging...');
+
             // 1. Get Local Tree
             const localTree = await bookmarkDetector.getBookmarkTree();
             console.log('Local Tree:', localTree);
@@ -65,7 +99,7 @@ export class SyncEngine {
             // 7. Apply to Browser
             await this.applyTreeToBrowser(mergedTree);
 
-            // 8. Update Sync Version
+            // 8. Update Sync Version (Remote and Local)
             await this.updateSyncVersion(uid);
 
             return {
@@ -260,11 +294,14 @@ export class SyncEngine {
 
     private async updateSyncVersion(uid: string) {
         const version: SyncVersion = {
-            version: Date.now(),
+            version: Date.now(), // Using timestamp as version for simplicity, or increment if we tracked it
             timestamp: Date.now(),
             source: 'browser'
         };
-        await set(ref(this.db, `bookmarks/${uid}/syncVersion`), version);
+        // Update Remote
+        await set(ref(this.db, `bookmarks/${uid}/metadata`), version);
+        // Update Local
+        await versionManager.updateLocalVersion(version);
     }
 }
 

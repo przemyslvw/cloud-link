@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Database, objectVal, ref, set } from '@angular/fire/database';
 import { Observable, of, firstValueFrom } from 'rxjs';
 import { map, take } from 'rxjs/operators';
-import { BookmarkTreeNode } from '../models/bookmark.model';
+import { BookmarkTreeNode, SyncVersion } from '../models/bookmark.model';
 
 @Injectable({
     providedIn: 'root'
@@ -32,7 +32,22 @@ export class BookmarkService {
         if (!currentTree || currentTree.length === 0) return;
 
         const updatedTree = this.removeNodeFromTree(currentTree, nodeId);
+
+        // Update tree
         await set(treeRef, updatedTree);
+
+        // Update metadata
+        const metadataRef = ref(this.db, `bookmarks/${uid}/metadata`);
+        const currentMetadata = await firstValueFrom(objectVal<SyncVersion>(metadataRef).pipe(take(1)));
+
+        const newVersion = (currentMetadata?.version || 0) + 1;
+        const metadata: SyncVersion = {
+            version: newVersion,
+            timestamp: Date.now(),
+            source: 'web'
+        };
+
+        await set(metadataRef, metadata);
     }
 
     private removeNodeFromTree(nodes: BookmarkTreeNode[], nodeId: string): BookmarkTreeNode[] {
