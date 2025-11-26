@@ -3,8 +3,38 @@ import { BookmarkTreeNode } from '../../src/app/models/bookmark.model';
 export class BookmarkDetector {
     private onChangeCallback?: (type: 'created' | 'removed' | 'changed', data: any) => void;
 
+    private mirror: Map<string, BookmarkTreeNode> = new Map();
+
     constructor() {
         console.log('BookmarkDetector initialized');
+        this.loadMirror();
+    }
+
+    private async loadMirror() {
+        const data = await chrome.storage.local.get(['bookmarkMirror']);
+        if (data.bookmarkMirror) {
+            this.mirror = new Map(JSON.parse(data.bookmarkMirror as string));
+        } else {
+            // Initial load - populate mirror from current state
+            const tree = await this.getBookmarkTree();
+            this.flattenTreeToMirror(tree);
+            this.saveMirror();
+        }
+    }
+
+    private async saveMirror() {
+        await chrome.storage.local.set({
+            bookmarkMirror: JSON.stringify(Array.from(this.mirror.entries()))
+        });
+    }
+
+    private flattenTreeToMirror(nodes: BookmarkTreeNode[]) {
+        for (const node of nodes) {
+            this.mirror.set(node.id, node);
+            if (node.children) {
+                this.flattenTreeToMirror(node.children);
+            }
+        }
     }
 
     public startListening(callback: (type: 'created' | 'removed' | 'changed', data: any) => void) {
@@ -37,31 +67,91 @@ export class BookmarkDetector {
     }
 
     private handleCreated(id: string, bookmark: chrome.bookmarks.BookmarkTreeNode) {
-        // TODO: Adapt to new tree structure events if needed for real-time sync
-        // For now, we rely on full re-sync or specific event handling
+        // Update Mirror
+        const modelNode: BookmarkTreeNode = {
+            id: bookmark.id,
+            parentId: bookmark.parentId,
+            index: bookmark.index,
+            title: bookmark.title,
+            url: bookmark.url,
+            dateAdded: bookmark.dateAdded,
+            dateGroupModified: bookmark.dateGroupModified
+        };
+        this.mirror.set(id, modelNode);
+        this.saveMirror();
+
         this.onChangeCallback?.('created', { id, bookmark });
     }
 
     private async handleRemoved(id: string, removeInfo: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) {
-        this.onChangeCallback?.('removed', { id, parentId: removeInfo.parentId });
+        // Get deleted node from Mirror BEFORE removing it
+        const deletedNode = this.mirror.get(id);
 
-        // Track deleted URL for sync
-        if (removeInfo.node && removeInfo.node.url) {
-            console.log('Tracking deleted URL:', removeInfo.node.url);
+        if (deletedNode) {
+            console.log('Detected removal of:', deletedNode.title, deletedNode.url);
+
+            // Track deleted URL/ID for sync
             const data = await chrome.storage.local.get(['deletedUrls']);
             const deletedUrls = (data.deletedUrls as string[]) || [];
-            if (!deletedUrls.includes(removeInfo.node.url)) {
-                deletedUrls.push(removeInfo.node.url);
+
+            // We track URL for links, and maybe ID for folders? 
+            // For now, let's stick to URL for content, as IDs might differ across devices if not synced perfectly yet.
+            // But wait, user requirement 2 says "should remove that bookmark in database".
+            // If we only track URL, we handle links. Folders are harder.
+
+            if (deletedNode.url && !deletedUrls.includes(deletedNode.url)) {
+                deletedUrls.push(deletedNode.url);
                 await chrome.storage.local.set({ deletedUrls });
+            }
+
+            // Remove from Mirror
+            this.mirror.delete(id);
+            // Also need to remove children from mirror if it was a folder
+            // But map doesn't support recursive delete easily without traversing.
+            // Since we flatten, we might leave orphans in mirror if we don't be careful.
+            // Ideally we should traverse the deleted node's children if available (but removeInfo.node is recursive in Chrome API?)
+            // Chrome API removeInfo.node is only available since Chrome 59, let's check if it has children.
+            if (removeInfo.node && removeInfo.node.children) {
+                this.removeChildrenFromMirror(removeInfo.node.children);
+            }
+
+            this.saveMirror();
+        } else {
+            console.warn('Removed node not found in mirror:', id);
+        }
+
+        this.onChangeCallback?.('removed', { id, parentId: removeInfo.parentId });
+    }
+
+    private removeChildrenFromMirror(nodes: chrome.bookmarks.BookmarkTreeNode[]) {
+        for (const node of nodes) {
+            this.mirror.delete(node.id);
+            if (node.children) {
+                this.removeChildrenFromMirror(node.children);
             }
         }
     }
 
     private handleChanged(id: string, changeInfo: { title: string; url?: string }) {
+        const node = this.mirror.get(id);
+        if (node) {
+            node.title = changeInfo.title;
+            if (changeInfo.url) node.url = changeInfo.url;
+            this.mirror.set(id, node);
+            this.saveMirror();
+        }
         this.onChangeCallback?.('changed', { id, changeInfo });
     }
 
     private handleMoved(id: string, moveInfo: { parentId: string; index: number; oldParentId: string; oldIndex: number }) {
+        const node = this.mirror.get(id);
+        if (node) {
+            node.parentId = moveInfo.parentId;
+            node.index = moveInfo.index;
+            this.mirror.set(id, node);
+            this.saveMirror();
+        }
+
         this.onChangeCallback?.('changed', {
             id,
             changeInfo: {

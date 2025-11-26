@@ -114,13 +114,16 @@ export class SyncEngine {
         // 1. Iterate Local Nodes
         for (const localNode of localNodes) {
             // Find matching Remote Node
-            // Match by URL (for links) or Title (for folders)
-            // We assume folders with same name in same location are same
-            const remoteMatch = remoteNodes.find(r => {
-                if (localNode.url && r.url) return localNode.url === r.url; // Link match
-                if (!localNode.url && !r.url) return localNode.title === r.title; // Folder match
-                return false;
-            });
+            // Priority: ID > URL > Title
+            let remoteMatch = remoteNodes.find(r => r.id === localNode.id);
+
+            if (!remoteMatch) {
+                if (localNode.url) {
+                    remoteMatch = remoteNodes.find(r => r.url === localNode.url);
+                } else {
+                    remoteMatch = remoteNodes.find(r => r.title === localNode.title && !r.url);
+                }
+            }
 
             if (remoteMatch) {
                 // Match found! Merge them.
@@ -147,7 +150,6 @@ export class SyncEngine {
                 }
 
                 // This is a new node from remote
-                // We keep it as is, but when applying to browser, we'll need to create it
                 merged.push(remoteNode);
             }
         }
