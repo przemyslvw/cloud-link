@@ -75,13 +75,14 @@ export class SyncEngine {
             const remoteTree = await this.getRemoteTree(uid);
             console.log('Remote Tree:', remoteTree);
 
-            // 3. Get Deleted URLs
-            const storageData = await chrome.storage.local.get(['deletedUrls']);
+            // 3. Get Deleted URLs and IDs
+            const storageData = await chrome.storage.local.get(['deletedUrls', 'deletedIds']);
             const deletedUrls = (storageData.deletedUrls as string[]) || [];
-            console.log('Deleted URLs to process:', deletedUrls);
+            const deletedIds = (storageData.deletedIds as string[]) || [];
+            console.log('Deleted items to process - URLs:', deletedUrls, 'IDs:', deletedIds);
 
             // 4. Merge Trees
-            const { mergedTree, addedFromRemote, addedFromLocal } = this.mergeTreesWithStats(localTree, remoteTree, deletedUrls);
+            const { mergedTree, addedFromRemote, addedFromLocal } = this.mergeTreesWithStats(localTree, remoteTree, deletedUrls, deletedIds);
             console.log('Merged Tree:', mergedTree);
 
             pulledCount = addedFromRemote;
@@ -90,9 +91,9 @@ export class SyncEngine {
             // 5. Save to Remote
             await this.saveRemoteTree(uid, mergedTree);
 
-            // 6. Clear processed deleted URLs
-            if (deletedUrls.length > 0) {
-                await chrome.storage.local.remove(['deletedUrls']);
+            // 6. Clear processed deleted URLs and IDs
+            if (deletedUrls.length > 0 || deletedIds.length > 0) {
+                await chrome.storage.local.remove(['deletedUrls', 'deletedIds']);
                 console.log('Cleared processed deleted URLs');
             }
 
@@ -155,7 +156,7 @@ export class SyncEngine {
     }
 
     // Merge Logic with Stats
-    private mergeTreesWithStats(localNodes: BookmarkTreeNode[], remoteNodes: BookmarkTreeNode[], deletedUrls: string[] = []): { mergedTree: BookmarkTreeNode[], addedFromRemote: number, addedFromLocal: number } {
+    private mergeTreesWithStats(localNodes: BookmarkTreeNode[], remoteNodes: BookmarkTreeNode[], deletedUrls: string[] = [], deletedIds: string[] = []): { mergedTree: BookmarkTreeNode[], addedFromRemote: number, addedFromLocal: number } {
         const merged: BookmarkTreeNode[] = [];
         const usedRemoteIds = new Set<string>();
         let addedFromRemote = 0;
@@ -179,7 +180,7 @@ export class SyncEngine {
                 // Match found! Merge them.
                 usedRemoteIds.add(remoteMatch.id);
 
-                const childStats = this.mergeTreesWithStats(localNode.children || [], remoteMatch.children || [], deletedUrls);
+                const childStats = this.mergeTreesWithStats(localNode.children || [], remoteMatch.children || [], deletedUrls, deletedIds);
                 addedFromRemote += childStats.addedFromRemote;
                 addedFromLocal += childStats.addedFromLocal;
 
@@ -203,11 +204,16 @@ export class SyncEngine {
             if (!usedRemoteIds.has(remoteNode.id)) {
                 // Check if this remote node was deleted locally
                 if (remoteNode.url && deletedUrls.includes(remoteNode.url)) {
-                    console.log('Skipping deleted remote bookmark:', remoteNode.title, remoteNode.url);
+                    console.log('Skipping deleted remote bookmark (by URL):', remoteNode.title, remoteNode.url);
+                    continue;
+                }
+                if (deletedIds.includes(remoteNode.id)) {
+                    console.log('Skipping deleted remote bookmark (by ID):', remoteNode.title, remoteNode.id);
                     continue;
                 }
 
                 // This is a new node from remote (this counts as "pulled")
+                console.log('Adding new node from remote:', remoteNode.title, remoteNode.id, remoteNode.url);
                 addedFromRemote++;
                 addedFromRemote += this.countNodes(remoteNode.children || []);
 

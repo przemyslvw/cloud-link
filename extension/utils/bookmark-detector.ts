@@ -91,8 +91,9 @@ export class BookmarkDetector {
             console.log('Detected removal of:', deletedNode.title, deletedNode.url);
 
             // Track deleted URL/ID for sync
-            const data = await chrome.storage.local.get(['deletedUrls']);
+            const data = await chrome.storage.local.get(['deletedUrls', 'deletedIds']);
             const deletedUrls = (data.deletedUrls as string[]) || [];
+            const deletedIds = (data.deletedIds as string[]) || [];
 
             // We track URL for links, and maybe ID for folders? 
             // For now, let's stick to URL for content, as IDs might differ across devices if not synced perfectly yet.
@@ -101,8 +102,15 @@ export class BookmarkDetector {
 
             if (deletedNode.url && !deletedUrls.includes(deletedNode.url)) {
                 deletedUrls.push(deletedNode.url);
-                await chrome.storage.local.set({ deletedUrls });
             }
+
+            // Also track ID for more robust local deletion handling
+            if (!deletedIds.includes(id)) {
+                deletedIds.push(id);
+            }
+
+            await chrome.storage.local.set({ deletedUrls, deletedIds });
+            console.log('Tracked deletion - ID:', id, 'URL:', deletedNode.url);
 
             // Remove from Mirror
             this.mirror.delete(id);
