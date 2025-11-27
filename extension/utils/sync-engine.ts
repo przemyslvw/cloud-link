@@ -34,24 +34,27 @@ export class SyncEngine {
         let pushedCount = 0;
 
         try {
-            // 0. Check Versions
+            // 0. Check Versions and Dirty State
             const localVersion = await versionManager.getLocalVersion();
+            const { hasUnsyncedChanges } = await chrome.storage.local.get(['hasUnsyncedChanges']);
+            console.log('Sync State - Local Version:', localVersion, 'Dirty:', hasUnsyncedChanges);
+
             const metadataRef = ref(this.db, `bookmarks/${uid}/metadata`);
             const metadataSnapshot = await get(metadataRef);
             const remoteVersion = metadataSnapshot.exists() ? metadataSnapshot.val() as SyncVersion : null;
 
             console.log('Sync Check - Local:', localVersion, 'Remote:', remoteVersion);
 
-            // If remote is newer, PULL ONLY
-            if (remoteVersion && remoteVersion.timestamp > localVersion.timestamp) {
-                console.log('Remote is newer. Pulling from server...');
+            // If remote is newer AND we are clean (no local changes), Strict Pull (Mirror)
+            if (remoteVersion && remoteVersion.timestamp > localVersion.timestamp && !hasUnsyncedChanges) {
+                console.log('Remote is newer and local is clean. Performing STRICT PULL (Mirroring)...');
 
                 // 1. Get Remote Tree
                 const remoteTree = await this.getRemoteTree(uid);
                 console.log('Remote Tree:', remoteTree);
 
-                // 2. Apply to Browser (Overwrite/Update)
-                await this.applyTreeToBrowser(remoteTree);
+                // 2. Apply to Browser (Strict Mirror)
+                await this.applyTreeToBrowser(remoteTree, true); // true = strict mode
 
                 // 3. Update Local Version to match Remote
                 await versionManager.updateLocalVersion(remoteVersion);
@@ -65,7 +68,7 @@ export class SyncEngine {
             }
 
             // Otherwise, proceed with Merge (Push/Sync)
-            console.log('Local is newer or equal. Merging...');
+            console.log('Local is newer, equal, or dirty. Merging...');
 
             // 1. Get Local Tree
             const localTree = await bookmarkDetector.getBookmarkTree();
@@ -98,10 +101,13 @@ export class SyncEngine {
             }
 
             // 7. Apply to Browser
-            await this.applyTreeToBrowser(mergedTree);
+            await this.applyTreeToBrowser(mergedTree, false); // false = merge mode (no deletions)
 
             // 8. Update Sync Version (Remote and Local)
             await this.updateSyncVersion(uid);
+
+            // 9. Clear Dirty State
+            await bookmarkDetector.clearDirtyState();
 
             return {
                 success: true,
@@ -235,7 +241,7 @@ export class SyncEngine {
         return count;
     }
 
-    private async applyTreeToBrowser(mergedTree: BookmarkTreeNode[]) {
+    private async applyTreeToBrowser(mergedTree: BookmarkTreeNode[], strictMode: boolean) {
         // We need to map the merged tree back to the browser
         // The merged tree contains:
         // - Nodes with existing Local IDs (we skip or update these)
@@ -255,7 +261,7 @@ export class SyncEngine {
 
             if (targetRoot) {
                 // Recursively apply children to this root
-                await this.applyChildren(targetRoot.id, mergedRoot.children || []);
+                await this.applyChildren(targetRoot.id, mergedRoot.children || [], strictMode);
             } else {
                 // If top level folder doesn't exist (unlikely for standard roots), create it?
                 // Chrome won't let us create roots, but maybe it's a custom folder synced from elsewhere
@@ -264,7 +270,7 @@ export class SyncEngine {
         }
     }
 
-    private async applyChildren(parentId: string, nodes: BookmarkTreeNode[]) {
+    private async applyChildren(parentId: string, nodes: BookmarkTreeNode[], strictMode: boolean) {
         // Get current children of this parent to check for existence
         const currentChildren = await chrome.bookmarks.getChildren(parentId);
 
@@ -279,7 +285,7 @@ export class SyncEngine {
             if (existing) {
                 // Exists. If it's a folder, recurse.
                 if (!node.url && node.children) {
-                    await this.applyChildren(existing.id, node.children);
+                    await this.applyChildren(existing.id, node.children, strictMode);
                 }
                 // If it's a link, we assume it's synced (or we could update title/url if changed)
             } else {
@@ -292,12 +298,27 @@ export class SyncEngine {
 
                 // If it's a folder, recurse to create its children
                 if (!node.url && node.children) {
-                    await this.applyChildren(created.id, node.children);
+                    await this.applyChildren(created.id, node.children, strictMode);
+                }
+            }
+        }
+
+        // Strict Mode: Remove local nodes that are NOT in the remote tree
+        if (strictMode) {
+            for (const child of currentChildren) {
+                // Check if this local child exists in the new tree
+                const stillExists = nodes.find(n => {
+                    if (n.url) return n.url === child.url;
+                    return n.title === child.title;
+                });
+
+                if (!stillExists) {
+                    console.log('Strict Sync: Removing local bookmark not in remote:', child.title);
+                    await chrome.bookmarks.removeTree(child.id);
                 }
             }
         }
     }
-
     private async updateSyncVersion(uid: string) {
         const version: SyncVersion = {
             version: Date.now(), // Using timestamp as version for simplicity, or increment if we tracked it

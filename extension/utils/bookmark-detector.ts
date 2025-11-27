@@ -2,6 +2,7 @@ import { BookmarkTreeNode } from '../../src/app/models/bookmark.model';
 
 export class BookmarkDetector {
     private onChangeCallback?: (type: 'created' | 'removed' | 'changed', data: any) => void;
+    private isDirty = false;
 
     private mirror: Map<string, BookmarkTreeNode> = new Map();
 
@@ -11,7 +12,7 @@ export class BookmarkDetector {
     }
 
     private async loadMirror() {
-        const data = await chrome.storage.local.get(['bookmarkMirror']);
+        const data = await chrome.storage.local.get(['bookmarkMirror', 'hasUnsyncedChanges']);
         if (data.bookmarkMirror) {
             this.mirror = new Map(JSON.parse(data.bookmarkMirror as string));
         } else {
@@ -20,6 +21,21 @@ export class BookmarkDetector {
             this.flattenTreeToMirror(tree);
             this.saveMirror();
         }
+        this.isDirty = !!data.hasUnsyncedChanges;
+    }
+
+    private async markAsDirty() {
+        if (!this.isDirty) {
+            this.isDirty = true;
+            await chrome.storage.local.set({ hasUnsyncedChanges: true });
+            console.log('Marked as dirty (unsynced changes)');
+        }
+    }
+
+    public async clearDirtyState() {
+        this.isDirty = false;
+        await chrome.storage.local.set({ hasUnsyncedChanges: false });
+        console.log('Cleared dirty state');
     }
 
     private async saveMirror() {
@@ -81,6 +97,7 @@ export class BookmarkDetector {
         this.saveMirror();
 
         this.onChangeCallback?.('created', { id, bookmark });
+        this.markAsDirty();
     }
 
     private async handleRemoved(id: string, removeInfo: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) {
@@ -129,6 +146,7 @@ export class BookmarkDetector {
         }
 
         this.onChangeCallback?.('removed', { id, parentId: removeInfo.parentId });
+        this.markAsDirty();
     }
 
     private removeChildrenFromMirror(nodes: chrome.bookmarks.BookmarkTreeNode[]) {
@@ -149,6 +167,7 @@ export class BookmarkDetector {
             this.saveMirror();
         }
         this.onChangeCallback?.('changed', { id, changeInfo });
+        this.markAsDirty();
     }
 
     private handleMoved(id: string, moveInfo: { parentId: string; index: number; oldParentId: string; oldIndex: number }) {
@@ -167,6 +186,7 @@ export class BookmarkDetector {
                 index: moveInfo.index
             }
         });
+        this.markAsDirty();
     }
 
     // Get all bookmarks from Chrome as a Tree
