@@ -28,7 +28,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         authManager.logout()
             .then(() => {
                 sendResponse({ success: true });
-                bookmarkDetector.stopListening();
             })
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
