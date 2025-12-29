@@ -61,11 +61,14 @@ describe('Upstream Sync', () => {
             expect(bookmarkUtils.sanitizeNode).toHaveBeenCalled();
             expect(authManager.getCurrentUser).toHaveBeenCalled();
             expect(getFirebaseDb).toHaveBeenCalled();
-            expect(ref).toHaveBeenCalledWith(expect.anything(), 'users/test-uid/bookmarks');
-            // Check if set was called with sanitized array
-            expect(set).toHaveBeenCalledWith('mock-ref', expect.arrayContaining([
-                expect.objectContaining({ title: 'Root', sanitized: true })
-            ]));
+            expect(ref).toHaveBeenCalledWith(expect.anything(), 'users/test-uid');
+            // Check if set was called with sanitized array and timestamp
+            expect(set).toHaveBeenCalledWith('mock-ref', expect.objectContaining({
+                bookmarks: expect.arrayContaining([
+                    expect.objectContaining({ title: 'Root', sanitized: true })
+                ]),
+                lastUpdated: expect.any(Number)
+            }));
             done();
         }, 1100); // Wait > 1000ms
     });

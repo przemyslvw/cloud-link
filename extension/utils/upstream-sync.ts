@@ -19,9 +19,12 @@ export function initializeUpstreamSync() {
             }
 
             const db = getFirebaseDb();
-            const bookmarksRef = ref(db, `users/${user.uid}/bookmarks`);
-            await set(bookmarksRef, cleanTree);
-            console.log('Synced bookmarks to Firebase');
+            const bookmarksRef = ref(db, `users/${user.uid}`);
+            await set(bookmarksRef, {
+                bookmarks: cleanTree,
+                lastUpdated: Date.now()
+            });
+            console.log('Synced bookmarks and timestamp to Firebase');
         })
     ).subscribe({
         error: (err) => console.error('Error in upstream sync:', err)
