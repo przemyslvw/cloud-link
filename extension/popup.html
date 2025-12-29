@@ -17,6 +17,19 @@
         <button type="submit">Login</button>
       </form>
       <p id="error-message" class="error"></p>
+      <a href="#" id="forgot-password-link">Forgot Password?</a>
+    </div>
+
+    <!-- Reset Password View -->
+    <div id="reset-view" style="display: none;">
+      <h2>Reset Password</h2>
+      <p>Enter your email to receive a password reset link.</p>
+      <form id="reset-form">
+        <input type="email" id="reset-email" placeholder="Email" required>
+        <button type="submit">Send Reset Link</button>
+      </form>
+      <a href="#" id="back-to-login-link">Back to Login</a>
+      <p id="reset-message" class="message"></p>
     </div>
 
     <!-- Logged In View -->

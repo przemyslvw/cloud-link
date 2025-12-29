@@ -88,3 +88,28 @@ p {
     margin: 10px 0;
     color: #666;
 }
+
+a {
+    color: #1976d2;
+    text-decoration: none;
+    font-size: 14px;
+    margin-top: 10px;
+    display: inline-block;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}
+
+.message {
+    font-size: 12px;
+    margin-top: 10px;
+    
+    &.success {
+        color: #388e3c;
+    }
+
+    &.error {
+        color: #d32f2f;
+    }
+}

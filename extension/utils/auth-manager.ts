@@ -1,4 +1,4 @@
-import { signInWithEmailAndPassword, onAuthStateChanged, User } from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged, User, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirebaseAuth } from './firebase-instance';
 
 class AuthManager {
@@ -27,6 +27,10 @@ class AuthManager {
     async login(email: string, password: string): Promise<User> {
         const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
         return userCredential.user;
+    }
+
+    async resetPassword(email: string): Promise<void> {
+        await sendPasswordResetEmail(this.auth, email);
     }
 
     async logout(): Promise<void> {

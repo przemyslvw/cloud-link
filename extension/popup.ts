@@ -3,6 +3,7 @@ console.log('Popup script loaded');
 
 const loginView = document.getElementById('login-view')!;
 const loggedInView = document.getElementById('logged-in-view')!;
+const resetView = document.getElementById('reset-view')!;
 const loadingView = document.getElementById('loading-view')!;
 const loginForm = document.getElementById('login-form') as HTMLFormElement;
 const emailInput = document.getElementById('email') as HTMLInputElement;
@@ -12,6 +13,12 @@ const userEmailSpan = document.getElementById('user-email')!;
 const logoutBtn = document.getElementById('logout-btn')!;
 const syncBtn = document.getElementById('sync-btn') as HTMLButtonElement;
 const syncStatus = document.getElementById('sync-status')!;
+
+const forgotPasswordLink = document.getElementById('forgot-password-link')!;
+const backToLoginLink = document.getElementById('back-to-login-link')!;
+const resetForm = document.getElementById('reset-form') as HTMLFormElement;
+const resetEmailInput = document.getElementById('reset-email') as HTMLInputElement;
+const resetMessage = document.getElementById('reset-message')!;
 
 // Check auth state on load
 chrome.runtime.sendMessage({ action: 'getUser' }, (response) => {
@@ -26,11 +33,20 @@ chrome.runtime.sendMessage({ action: 'getUser' }, (response) => {
 function showLoginView() {
     loginView.style.display = 'block';
     loggedInView.style.display = 'none';
+    resetView.style.display = 'none';
+}
+
+function showResetView() {
+    loginView.style.display = 'none';
+    loggedInView.style.display = 'none';
+    resetView.style.display = 'block';
+    resetMessage.textContent = '';
 }
 
 function showLoggedInView(email: string) {
     loginView.style.display = 'none';
     loggedInView.style.display = 'block';
+    resetView.style.display = 'none';
     userEmailSpan.textContent = email;
 }
 
@@ -52,6 +68,38 @@ loginForm.addEventListener('submit', async (e) => {
             }
         }
     );
+});
+
+// View switching handlers
+forgotPasswordLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    showResetView();
+});
+
+backToLoginLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    showLoginView();
+});
+
+// Reset password handler
+resetForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = resetEmailInput.value;
+    resetMessage.textContent = 'Sending...';
+    resetMessage.className = 'message';
+
+    chrome.runtime.sendMessage({ action: 'resetPassword', email }, (response) => {
+        if (response.success) {
+            resetMessage.textContent = 'Reset link sent! Check your email.';
+            resetMessage.className = 'message success';
+            setTimeout(() => {
+                showLoginView();
+            }, 3000);
+        } else {
+            resetMessage.textContent = response.error || 'Failed to send reset link.';
+            resetMessage.className = 'message error';
+        }
+    });
 });
 
 // Logout handler
