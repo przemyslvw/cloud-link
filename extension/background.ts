@@ -1,8 +1,11 @@
 // Background Service Worker
 import { authManager } from './utils/auth-manager';
 import { bookmarkDetector } from './utils/bookmark-detector';
+import { initializeUpstreamSync } from './utils/upstream-sync';
 
 console.log('Background service worker started');
+
+initializeUpstreamSync();
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log('Extension installed');
