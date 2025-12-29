@@ -1,3 +1,5 @@
+import { isSyncingFromRemote } from './bookmark-streams';
+
 export interface CleanBookmarkNode {
     title: string;
     url?: string;
@@ -76,5 +78,44 @@ export async function createBookmarksFromTree(nodes: CleanBookmarkNode[], parent
         if (node.children) {
             await createBookmarksFromTree(node.children, createdNode.id);
         }
+    }
+}
+
+
+export function cleanBookmarksForExport(nodes: chrome.bookmarks.BookmarkTreeNode[]): CleanBookmarkNode[] {
+    return nodes.map(node => {
+        const clean: CleanBookmarkNode = {
+            title: node.title
+        };
+
+        if (node.url) {
+            clean.url = node.url;
+        }
+
+        if (node.children) {
+            clean.children = cleanBookmarksForExport(node.children);
+        }
+
+        return clean;
+    });
+}
+
+export async function overwriteLocalBookmarks(cleanTree: CleanBookmarkNode[]): Promise<void> {
+    isSyncingFromRemote.next(true);
+    console.log("Starting local bookmark overwrite...");
+
+    try {
+        await clearAllBookmarks();
+        await createBookmarksFromTree(cleanTree);
+        console.log("Local bookmark overwrite complete.");
+    } catch (error) {
+        console.error("Error overwriting local bookmarks:", error);
+        throw error;
+    } finally {
+        // Debounce releasing the lock slightly to ensure all events have fired
+        setTimeout(() => {
+            isSyncingFromRemote.next(false);
+            console.log("Sync lock released.");
+        }, 500);
     }
 }

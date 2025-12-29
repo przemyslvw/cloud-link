@@ -42,21 +42,6 @@ async function applyRemoteChanges(remoteBookmarks: CleanBookmarkNode[]) {
     }
 }
 
-async function performInitialSync(uid: string) {
-    console.log('Performing initial sync...');
-    const db = getFirebaseDb();
-    const bookmarksRef = ref(db, `users/${uid}/bookmarks`);
-
-    try {
-        const snapshot = await get(bookmarksRef);
-        const val = snapshot.val();
-        await applyRemoteChanges(val || []);
-        console.log('Initial sync complete');
-    } catch (err) {
-        console.error('Initial sync failed', err);
-    }
-}
-
 export async function initializeDownstreamSync() {
     const user = await authManager.getCurrentUser();
     if (!user) {
@@ -64,10 +49,7 @@ export async function initializeDownstreamSync() {
         return;
     }
 
-    // 1. Initial Sync (Startup)
-    await performInitialSync(user.uid);
-
-    // 2. Realtime Sync
+    // Realtime Sync
     createFirebaseStream(user.uid).subscribe({
         next: (remoteBookmarks) => applyRemoteChanges(remoteBookmarks),
         error: (err) => console.error('Error in downstream sync stream', err)

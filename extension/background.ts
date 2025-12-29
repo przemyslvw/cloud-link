@@ -2,11 +2,19 @@ import { authManager } from './utils/auth-manager';
 import { bookmarkDetector } from './utils/bookmark-detector';
 import { initializeUpstreamSync } from './utils/upstream-sync';
 import { initializeDownstreamSync } from './utils/downstream-sync';
+import { initializeSync$ } from './utils/initial-sync';
 
 console.log('Background service worker started');
 
-initializeUpstreamSync();
-initializeDownstreamSync();
+
+initializeSync$.subscribe({
+    next: () => {
+        console.log("Initial sync completed successfully.");
+        initializeUpstreamSync();
+        initializeDownstreamSync();
+    },
+    error: (err) => console.error("Initial sync failed (user might be logged out):", err)
+});
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log('Extension installed');
