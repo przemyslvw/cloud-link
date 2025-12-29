@@ -1,7 +1,11 @@
-import { localBookmarksChanged$ } from './bookmark-streams';
+import { localBookmarksChanged$, isSyncingFromRemote } from './bookmark-streams';
 import { chrome } from 'jest-chrome';
 
 describe('Bookmark Streams', () => {
+    beforeEach(() => {
+        isSyncingFromRemote.next(false); // Reset flag before each test
+    });
+
     it('should emit when a bookmark is created', (done) => {
         const subscription = localBookmarksChanged$.subscribe((event) => {
             expect(event).toBeDefined();
@@ -41,5 +45,22 @@ describe('Bookmark Streams', () => {
         });
 
         chrome.bookmarks.onMoved.callListeners('id', {} as any);
+    });
+
+    it('should NOT emit when syncing from remote', (done) => {
+        isSyncingFromRemote.next(true);
+        let emitted = false;
+
+        const subscription = localBookmarksChanged$.subscribe(() => {
+            emitted = true;
+        });
+
+        chrome.bookmarks.onCreated.callListeners('id', {} as any);
+
+        setTimeout(() => {
+            expect(emitted).toBe(false);
+            subscription.unsubscribe();
+            done();
+        }, 100);
     });
 });
