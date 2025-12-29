@@ -10,7 +10,9 @@
         "strict": true,
         "esModuleInterop": true,
         "types": [
-            "chrome"
+            "chrome",
+            "jest",
+            "node"
         ]
     },
     "include": [
