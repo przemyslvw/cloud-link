@@ -4,7 +4,7 @@ import * as bookmarkUtils from './bookmark-utils';
 import { authManager } from './auth-manager';
 import { getFirebaseDb } from './firebase-instance';
 import { Subject } from 'rxjs';
-import { ref, onValue, off } from 'firebase/database';
+import { ref, onValue, off, get } from 'firebase/database';
 
 // Mock dependencies
 jest.mock('./bookmark-streams', () => {
@@ -28,7 +28,9 @@ jest.mock('./firebase-instance', () => ({
 jest.mock('firebase/database', () => ({
     ref: jest.fn(),
     onValue: jest.fn(),
-    off: jest.fn()
+    off: jest.fn(),
+    get: jest.fn(),
+    child: jest.fn()
 }));
 
 describe('Downstream Sync', () => {
@@ -46,48 +48,47 @@ describe('Downstream Sync', () => {
             return jest.fn(); // Unsubscribe function
         });
 
+        // Mock get (initial sync)
+        (get as jest.Mock).mockResolvedValue({ val: () => [] });
+
         jest.spyOn(isSyncingFromRemote, 'next');
     });
 
-    it('should sync from firebase when data changes', async () => {
+    it('should perform initial sync on startup', async () => {
+        const mockBookmarks = [{ title: 'Initial' }];
+        (get as jest.Mock).mockResolvedValue({ val: () => mockBookmarks });
+
+        await initializeDownstreamSync();
+
+        expect(get).toHaveBeenCalled(); // Initial sync
+        expect(bookmarkUtils.createBookmarksFromTree).toHaveBeenCalledWith(mockBookmarks);
+
+        // Should subscribe to realtime updates after
+        expect(onValue).toHaveBeenCalled();
+    });
+
+    it('should apply realtime updates after initial sync', async () => {
         jest.useFakeTimers();
         await initializeDownstreamSync();
 
-        expect(onValue).toHaveBeenCalled();
-
-        // Simulate Firebase data change
-        const mockBookmarks = [{ title: 'Remote Bookmark' }];
+        // Simulate Firebase realtime change
+        const mockBookmarks = [{ title: 'Realtime' }];
         const snapshot = { val: () => mockBookmarks };
 
-        // Should lock, clear, create, unlock
         mockOnValueCallback(snapshot);
 
-        // Immediate check for lock
         expect(isSyncingFromRemote.next).toHaveBeenCalledWith(true);
 
-        // Allow async operations in "next" to complete
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
-        await Promise.resolve(); // Extra ticks for safety
+        await Promise.resolve();
 
         expect(bookmarkUtils.clearAllBookmarks).toHaveBeenCalled();
         expect(bookmarkUtils.createBookmarksFromTree).toHaveBeenCalledWith(mockBookmarks);
 
-        // Advance time to release lock
         jest.advanceTimersByTime(500);
-
         expect(isSyncingFromRemote.next).toHaveBeenCalledWith(false);
-
         jest.useRealTimers();
-    });
-
-    it('should handle empty firebase data', async () => {
-        await initializeDownstreamSync();
-        const snapshot = { val: () => null };
-
-        await mockOnValueCallback(snapshot);
-
-        expect(bookmarkUtils.createBookmarksFromTree).toHaveBeenCalledWith([]);
     });
 });
