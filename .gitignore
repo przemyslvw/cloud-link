@@ -49,3 +49,6 @@ src/environments/
 extension/node_modules
 extension/dist
 extension/utils/firebase-config.ts
+
+#update
+update.md
