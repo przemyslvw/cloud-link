@@ -28,5 +28,12 @@
                 "content-script.js"
             ]
         }
+    ],
+    "host_permissions": [
+        "https://*.firebaseio.com/",
+        "https://*.firebasedatabase.app/",
+        "wss://*.firebasedatabase.app/",
+        "https://identitytoolkit.googleapis.com/",
+        "https://securetoken.googleapis.com/"
     ]
 }
