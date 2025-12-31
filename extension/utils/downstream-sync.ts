@@ -7,7 +7,7 @@ import { clearAllBookmarks, createBookmarksFromTree, CleanBookmarkNode } from '.
 
 function createFirebaseStream(uid: string): Observable<CleanBookmarkNode[]> {
     const db = getFirebaseDb();
-    const bookmarksRef = ref(db, `users/${uid}/bookmarks`);
+    const bookmarksRef = ref(db, `bookmarks/${uid}/tree`);
 
     return fromEventPattern(
         (handler) => onValue(bookmarksRef, (snapshot) => {

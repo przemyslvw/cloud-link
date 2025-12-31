@@ -1,5 +1,5 @@
 import { getFirebaseDb } from './firebase-instance';
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, update } from 'firebase/database';
 import { from, of, iif, defer, throwError } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
 import { authManager } from './auth-manager';
@@ -12,9 +12,10 @@ export const initializeSync$ = defer(() => from(authManager.getCurrentUser())).p
         }
 
         const db = getFirebaseDb();
-        const dbRef = ref(db, `users/${user.uid}/bookmarks`);
+        const bookmarksRef = ref(db, `bookmarks/${user.uid}/tree`);
+        const metadataRef = ref(db, `bookmarks/${user.uid}/metadata`);
 
-        return from(get(dbRef)).pipe(
+        return from(get(bookmarksRef)).pipe(
             switchMap(snapshot => {
                 const remoteData = snapshot.val();
                 const dbIsEmpty = !snapshot.exists() || remoteData === null;
@@ -29,7 +30,16 @@ export const initializeSync$ = defer(() => from(authManager.getCurrentUser())).p
                             return of(cleanBookmarksForExport(rootChildren));
                         }),
                         tap(() => console.log("Database empty. Initializing with local bookmarks...")),
-                        switchMap(localData => from(set(dbRef, localData))),
+                        switchMap(localData => {
+                            const updates: any = {};
+                            updates[`bookmarks/${user.uid}/tree`] = localData;
+                            updates[`bookmarks/${user.uid}/metadata`] = {
+                                version: 1,
+                                timestamp: Date.now(),
+                                source: 'extension_init'
+                            };
+                            return from(update(ref(db), updates));
+                        }),
                         tap(() => console.log("Database initialized with local bookmarks."))
                     ),
                     // Path B: Existing DB -> Overwrite local

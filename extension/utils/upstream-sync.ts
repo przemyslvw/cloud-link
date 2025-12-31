@@ -4,7 +4,7 @@ import { from } from 'rxjs';
 import { getBookmarkTree, sanitizeNode } from './bookmark-utils';
 import { authManager } from './auth-manager';
 import { getFirebaseDb } from './firebase-instance';
-import { ref, set } from 'firebase/database';
+import { ref, update } from 'firebase/database';
 
 export function initializeUpstreamSync() {
     localBookmarksChanged$.pipe(
@@ -19,11 +19,16 @@ export function initializeUpstreamSync() {
             }
 
             const db = getFirebaseDb();
-            const bookmarksRef = ref(db, `users/${user.uid}`);
-            await set(bookmarksRef, {
-                bookmarks: cleanTree,
-                lastUpdated: Date.now()
-            });
+
+            const updates: any = {};
+            updates[`bookmarks/${user.uid}/tree`] = cleanTree;
+            updates[`bookmarks/${user.uid}/metadata`] = {
+                version: Date.now(), // Simple versioning for now
+                timestamp: Date.now(),
+                source: 'extension_upstream'
+            };
+
+            await update(ref(db), updates);
             console.log('Synced bookmarks and timestamp to Firebase');
         })
     ).subscribe({
