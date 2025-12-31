@@ -4,7 +4,7 @@ import * as bookmarkUtils from './bookmark-utils';
 import { authManager } from './auth-manager';
 import { getFirebaseDb } from './firebase-instance';
 import { BehaviorSubject, Subject } from 'rxjs';
-import { ref, set } from 'firebase/database';
+import { ref, update } from 'firebase/database';
 
 // Mock dependencies
 jest.mock('./bookmark-streams', () => {
@@ -15,7 +15,7 @@ jest.mock('./bookmark-streams', () => {
 });
 jest.mock('./bookmark-utils', () => ({
     getBookmarkTree: jest.fn(),
-    sanitizeNode: jest.fn()
+    cleanBookmarksForExport: jest.fn()
 }));
 jest.mock('./auth-manager', () => ({
     authManager: {
@@ -27,7 +27,7 @@ jest.mock('./firebase-instance', () => ({
 }));
 jest.mock('firebase/database', () => ({
     ref: jest.fn(),
-    set: jest.fn()
+    update: jest.fn()
 }));
 
 describe('Upstream Sync', () => {
@@ -38,12 +38,16 @@ describe('Upstream Sync', () => {
         mockSubject = localBookmarksChanged$ as any as Subject<any>;
 
         // Setup default mocks
-        (bookmarkUtils.getBookmarkTree as jest.Mock).mockResolvedValue([{ title: 'Root' }]);
-        (bookmarkUtils.sanitizeNode as jest.Mock).mockImplementation(node => ({ title: node.title, sanitized: true }));
+        // Mock a tree with a root node (Bookmarks Bar)
+        (bookmarkUtils.getBookmarkTree as jest.Mock).mockResolvedValue([{
+            title: 'Root',
+            children: [{ title: 'Bookmarks Bar', children: [] }]
+        }]);
+        (bookmarkUtils.cleanBookmarksForExport as jest.Mock).mockImplementation(nodes => nodes.map(n => ({ title: n.title, sanitized: true })));
         (authManager.getCurrentUser as jest.Mock).mockResolvedValue({ uid: 'test-uid' });
         (getFirebaseDb as jest.Mock).mockReturnValue({});
         (ref as jest.Mock).mockReturnValue('mock-ref');
-        (set as jest.Mock).mockResolvedValue(undefined);
+        (update as jest.Mock).mockResolvedValue(undefined);
     });
 
     it('should sync to firebase after debounce', (done) => {
@@ -58,19 +62,35 @@ describe('Upstream Sync', () => {
         // Fast forward time
         setTimeout(() => {
             expect(bookmarkUtils.getBookmarkTree).toHaveBeenCalled();
-            expect(bookmarkUtils.sanitizeNode).toHaveBeenCalled();
+            expect(bookmarkUtils.cleanBookmarksForExport).toHaveBeenCalled();
             expect(authManager.getCurrentUser).toHaveBeenCalled();
             expect(getFirebaseDb).toHaveBeenCalled();
-            expect(ref).toHaveBeenCalledWith(expect.anything(), 'users/test-uid');
-            // Check if set was called with sanitized array and timestamp
-            expect(set).toHaveBeenCalledWith('mock-ref', expect.objectContaining({
-                bookmarks: expect.arrayContaining([
-                    expect.objectContaining({ title: 'Root', sanitized: true })
+            // Note: ref is called multiple times now (for tree and metadata), checking generally
+            expect(ref).toHaveBeenCalledWith(expect.anything(), expect.any(Object)); // ref(db)
+
+            expect(update).toHaveBeenCalledWith('mock-ref', expect.objectContaining({
+                'bookmarks/test-uid/tree': expect.arrayContaining([
+                    expect.objectContaining({ title: 'Bookmarks Bar', sanitized: true })
                 ]),
-                lastUpdated: expect.any(Number)
+                'bookmarks/test-uid/metadata': expect.objectContaining({
+                    source: 'extension_upstream'
+                })
             }));
             done();
         }, 1100); // Wait > 1000ms
+    });
+
+    it('should trigger sync on bookmark deletion', (done) => {
+        initializeUpstreamSync();
+
+        // Simulate deletion event
+        mockSubject.next('removed');
+
+        setTimeout(() => {
+            expect(bookmarkUtils.getBookmarkTree).toHaveBeenCalled();
+            expect(update).toHaveBeenCalled();
+            done();
+        }, 1100);
     });
 
     it('should skip sync if user not logged in', (done) => {
@@ -81,7 +101,7 @@ describe('Upstream Sync', () => {
 
         setTimeout(() => {
             expect(bookmarkUtils.getBookmarkTree).toHaveBeenCalled();
-            expect(set).not.toHaveBeenCalled();
+            expect(update).not.toHaveBeenCalled();
             done();
         }, 1100);
     });

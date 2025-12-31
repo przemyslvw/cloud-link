@@ -1,5 +1,5 @@
 import { fromEventPattern, merge, Observable, BehaviorSubject } from 'rxjs';
-import { filter } from 'rxjs/operators';
+import { filter, tap } from 'rxjs/operators';
 
 // Flag to prevent loop (local changes triggered by remote sync)
 export const isSyncingFromRemote = new BehaviorSubject<boolean>(false);
@@ -18,5 +18,13 @@ const moved$ = createStream(chrome.bookmarks.onMoved);
 
 // Main stream of local changes, ignored if we are syncing from remote
 export const localBookmarksChanged$ = merge(created$, removed$, changed$, moved$).pipe(
-    filter(() => !isSyncingFromRemote.getValue())
+    tap(event => console.log('Bookmark event detected:', event)),
+    filter(() => {
+        const isSyncing = isSyncingFromRemote.getValue();
+        if (isSyncing) {
+            console.log('Ignoring local change because downstream sync is active');
+        }
+        return !isSyncing;
+    }),
+    tap(() => console.log('Bookmark event passed filter'))
 );
