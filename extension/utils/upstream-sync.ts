@@ -1,7 +1,7 @@
 import { localBookmarksChanged$ } from './bookmark-streams';
 import { debounceTime, switchMap, map } from 'rxjs/operators';
 import { from } from 'rxjs';
-import { getBookmarkTree, sanitizeNode } from './bookmark-utils';
+import { getBookmarkTree, cleanBookmarksForExport } from './bookmark-utils';
 import { authManager } from './auth-manager';
 import { getFirebaseDb } from './firebase-instance';
 import { ref, update } from 'firebase/database';
@@ -10,7 +10,10 @@ export function initializeUpstreamSync() {
     localBookmarksChanged$.pipe(
         debounceTime(1000), // Wait for 1 second of silence
         switchMap(() => from(getBookmarkTree())), // Get latest tree
-        map(tree => tree.map(sanitizeNode)), // Sanitize
+        map(tree => {
+            const rootChildren = tree[0]?.children || [];
+            return cleanBookmarksForExport(rootChildren);
+        }),
         switchMap(async (cleanTree) => {
             const user = await authManager.getCurrentUser();
             if (!user) {
