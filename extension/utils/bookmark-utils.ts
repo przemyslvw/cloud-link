@@ -57,7 +57,7 @@ export async function createBookmarksFromTree(nodes: CleanBookmarkNode[], parent
             // However, Firebase tree might be the array of roots.
 
             // If node.title is 'Bookmarks Bar', we look up ID '1'.
-            if (node.title === 'Bookmarks Bar' || node.title === 'Pasek zakładek') currentParentId = '1';
+            if (node.title === 'Bookmarks Bar' || node.title === 'Pasek zakładek' || node.title === 'Zakładki') currentParentId = '1';
             else if (node.title === 'Other Bookmarks' || node.title === 'Inne zakładki') currentParentId = '2';
             else if (node.title === 'Mobile Bookmarks' || node.title === 'Zakładki mobilne') currentParentId = '3';
 
