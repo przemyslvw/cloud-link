@@ -43,7 +43,7 @@ describe('Upstream Sync', () => {
             title: 'Root',
             children: [{ title: 'Bookmarks Bar', children: [] }]
         }]);
-        (bookmarkUtils.cleanBookmarksForExport as jest.Mock).mockImplementation(nodes => nodes.map(n => ({ title: n.title, sanitized: true })));
+        (bookmarkUtils.cleanBookmarksForExport as jest.Mock).mockImplementation((nodes: any[]) => nodes.map((n: any) => ({ title: n.title, sanitized: true })));
         (authManager.getCurrentUser as jest.Mock).mockResolvedValue({ uid: 'test-uid' });
         (getFirebaseDb as jest.Mock).mockReturnValue({});
         (ref as jest.Mock).mockReturnValue('mock-ref');
@@ -66,7 +66,7 @@ describe('Upstream Sync', () => {
             expect(authManager.getCurrentUser).toHaveBeenCalled();
             expect(getFirebaseDb).toHaveBeenCalled();
             // Note: ref is called multiple times now (for tree and metadata), checking generally
-            expect(ref).toHaveBeenCalledWith(expect.anything(), expect.any(Object)); // ref(db)
+            expect(ref).toHaveBeenCalledWith(expect.anything()); // ref(db)
 
             expect(update).toHaveBeenCalledWith('mock-ref', expect.objectContaining({
                 'bookmarks/test-uid/tree': expect.arrayContaining([
