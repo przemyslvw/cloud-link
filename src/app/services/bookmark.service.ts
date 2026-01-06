@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Database, objectVal, ref, set } from '@angular/fire/database';
-import { Observable, of, firstValueFrom } from 'rxjs';
-import { map, take } from 'rxjs/operators';
+import { Observable, of, firstValueFrom, from } from 'rxjs';
+import { map, take, switchMap } from 'rxjs/operators';
 import { BookmarkTreeNode, SyncVersion } from '../models/bookmark.model';
 
 @Injectable({
@@ -25,29 +25,36 @@ export class BookmarkService {
     // TODO: Implement tree manipulation methods (add/move/delete) if needed for the web app
     // For now, the web app is primarily a viewer or needs a major refactor to support tree editing
 
-    async deleteBookmark(uid: string, nodeId: string): Promise<void> {
+    deleteBookmark(uid: string, nodeId: string): Observable<void> {
         const treeRef = ref(this.db, `bookmarks/${uid}/tree`);
-        const currentTree = await firstValueFrom(this.getBookmarkTree(uid).pipe(take(1)));
 
-        if (!currentTree || currentTree.length === 0) return;
+        return this.getBookmarkTree(uid).pipe(
+            take(1),
+            switchMap(currentTree => {
+                if (!currentTree || currentTree.length === 0) return of(undefined);
 
-        const updatedTree = this.removeNodeFromTree(currentTree, nodeId);
+                const updatedTree = this.removeNodeFromTree(currentTree, nodeId);
 
-        // Update tree
-        await set(treeRef, updatedTree);
+                // Update tree
+                const updateTreePromise = set(treeRef, updatedTree);
 
-        // Update metadata
-        const metadataRef = ref(this.db, `bookmarks/${uid}/metadata`);
-        const currentMetadata = await firstValueFrom(objectVal<SyncVersion>(metadataRef).pipe(take(1)));
+                // Update metadata
+                const metadataRef = ref(this.db, `bookmarks/${uid}/metadata`);
+                const updateMetadataPromise = firstValueFrom(objectVal<SyncVersion>(metadataRef).pipe(take(1))).then(currentMetadata => {
+                    const newVersion = (currentMetadata?.version || 0) + 1;
+                    const metadata: SyncVersion = {
+                        version: newVersion,
+                        timestamp: Date.now(),
+                        source: 'web'
+                    };
+                    return set(metadataRef, metadata);
+                });
 
-        const newVersion = (currentMetadata?.version || 0) + 1;
-        const metadata: SyncVersion = {
-            version: newVersion,
-            timestamp: Date.now(),
-            source: 'web'
-        };
-
-        await set(metadataRef, metadata);
+                return from(Promise.all([updateTreePromise, updateMetadataPromise])).pipe(
+                    map(() => undefined)
+                );
+            })
+        );
     }
 
     private removeNodeFromTree(nodes: BookmarkTreeNode[], nodeId: string): BookmarkTreeNode[] {
