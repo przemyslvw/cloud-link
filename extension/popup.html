@@ -36,9 +36,10 @@
     <div id="logged-in-view" style="display: none;">
       <h2>CloudLink</h2>
       <p>Logged in as: <span id="user-email"></span></p>
-      
+
       <!-- Status Badge -->
-      <div id="status-badge" class="status-badge" style="display:none; padding: 10px; margin: 10px 0; border-radius: 4px;"></div>
+      <div id="status-badge" class="status-badge"
+        style="display:none; padding: 10px; margin: 10px 0; border-radius: 4px;"></div>
 
       <button id="logout-btn">Logout</button>
       <button id="sync-btn">Sync Now</button>
@@ -47,15 +48,23 @@
 
     <!-- Conflict Resolution View -->
     <div id="conflict-view" style="display: none; border: 1px solid #f44336; padding: 15px; border-radius: 8px;">
-        <h3 style="color: #f44336; margin-top:0;">⚠️ Conflict Detected</h3>
-        <p>Your local bookmarks differ significantly from the cloud version.</p>
-        <p><strong>Cloud Items:</strong> <span id="remote-count">?</span></p>
-        <p><strong>Local Items:</strong> <span id="local-count">?</span></p>
-        <p>Please choose how to resolve this:</p>
-        
-        <button id="btn-merge" style="background-color: #2196F3; color: white; width: 100%; margin-bottom: 5px;">Merge (Recommended)</button>
-        <button id="btn-keep-local" style="background-color: #4CAF50; color: white; width: 100%; margin-bottom: 5px;">Keep Local (Overwrite Cloud)</button>
-        <button id="btn-keep-remote" style="background-color: #FF9800; color: white; width: 100%; margin-bottom: 5px;">Keep Cloud (Overwrite Local)</button>
+      <h3 style="color: #f44336; margin-top:0;">Conflict Detected</h3>
+      <p>Your local bookmarks differ significantly from the cloud version.</p>
+      <p><strong>Cloud Items:</strong> <span id="remote-count">?</span></p>
+      <p><strong>Local Items:</strong> <span id="local-count">?</span></p>
+      <p>Please choose how to resolve this:</p>
+
+      <button id="btn-merge" style="background-color: #2196F3; color: white; width: 100%; margin-bottom: 5px;">Merge
+        (Recommended)</button>
+      <button id="btn-keep-local" style="background-color: #4CAF50; color: white; width: 100%; margin-bottom: 5px;">Keep
+        Local (Overwrite Cloud)</button>
+      <button id="btn-keep-remote"
+        style="background-color: #FF9800; color: white; width: 100%; margin-bottom: 5px;">Keep Cloud (Overwrite
+        Local)</button>
+      <hr style="margin: 10px 0; border: 0; border-top: 1px solid #ddd;">
+      <button id="btn-clear-all"
+        style="background-color: #D32F2F; color: white; width: 100%; margin-bottom: 5px; font-weight: bold;">⚠️ Delete
+        All (Both Sides)</button>
     </div>
 
     <!-- Loading View -->

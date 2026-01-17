@@ -5,7 +5,7 @@ export enum SyncState {
     ERROR = 'ERROR'
 }
 
-export type ResolutionStrategy = 'merge' | 'local' | 'remote';
+export type ResolutionStrategy = 'merge' | 'local' | 'remote' | 'clear';
 
 export interface SyncStatus {
     state: SyncState;

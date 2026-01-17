@@ -114,6 +114,11 @@ class SyncManager {
                 // Apply merged to both
                 await overwriteLocalBookmarks(merged); // Update local
                 await this.pushToCloud(user.uid, merged); // Update cloud
+
+            } else if (strategy === 'clear') {
+                // Wipe both
+                await overwriteLocalBookmarks([]); // Clear local
+                await this.pushToCloud(user.uid, []); // Clear remote
             }
 
             console.log("SyncManager: Conflict resolved. Starting realtime sync.");

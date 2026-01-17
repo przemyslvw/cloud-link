@@ -46,4 +46,9 @@ module.exports = {
             filename: 'styles.css', // Or [name].css if we want per-entry styles
         }),
     ],
+    performance: {
+        maxEntrypointSize: 512000,
+        maxAssetSize: 512000,
+        hints: 'warning'
+    },
 };

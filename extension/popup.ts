@@ -29,6 +29,7 @@ const localCountSpan = document.getElementById('local-count')!;
 const btnMerge = document.getElementById('btn-merge')!;
 const btnKeepLocal = document.getElementById('btn-keep-local')!;
 const btnKeepRemote = document.getElementById('btn-keep-remote')!;
+const btnClearAll = document.getElementById('btn-clear-all')!;
 
 // Check auth state on load
 chrome.runtime.sendMessage({ action: 'getUser' }, (response) => {
@@ -126,6 +127,11 @@ function resolve(strategy: string) {
 btnMerge.addEventListener('click', () => resolve('merge'));
 btnKeepLocal.addEventListener('click', () => resolve('local'));
 btnKeepRemote.addEventListener('click', () => resolve('remote'));
+btnClearAll.addEventListener('click', () => {
+    if (confirm('Are you sure you want to delete ALL bookmarks from both the browser and the cloud? This cannot be undone.')) {
+        resolve('clear');
+    }
+});
 
 // Login form handler
 loginForm.addEventListener('submit', async (e) => {
