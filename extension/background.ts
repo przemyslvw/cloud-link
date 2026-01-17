@@ -1,20 +1,19 @@
 import { authManager } from './utils/auth-manager';
 import { bookmarkDetector } from './utils/bookmark-detector';
-import { initializeUpstreamSync } from './utils/upstream-sync';
-import { initializeDownstreamSync } from './utils/downstream-sync';
-import { initializeSync$ } from './utils/initial-sync';
+// import { initializeUpstreamSync } from './utils/upstream-sync'; // Managed by SyncManager now
+// import { initializeDownstreamSync } from './utils/downstream-sync'; // Managed by SyncManager now
+// import { initializeSync$ } from './utils/initial-sync'; // Deprecated
+import { syncManager } from './utils/sync-manager';
 
 console.log('Background service worker started');
 
-
-initializeSync$.subscribe({
-    next: () => {
-        console.log("Initial sync completed successfully.");
-        initializeUpstreamSync();
-        initializeDownstreamSync();
-    },
-    error: (err) => console.error("Initial sync failed (user might be logged out):", err)
+// Initialize Sync Manager when auth state is ready (or just let it handle its own checks)
+authManager.getCurrentUser().then(user => {
+    if (user) {
+        syncManager.start();
+    }
 });
+
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log('Extension installed');
@@ -31,6 +30,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         authManager.login(request.email, request.password)
             .then(user => {
                 sendResponse({ success: true, user: { uid: user.uid, email: user.email } });
+                syncManager.start(); // Start sync on login
             })
             .catch(error => sendResponse({ success: false, error: error.message }));
         return true;
@@ -66,8 +66,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    // --- Sync Manager Interaction ---
+
+    if (request.action === 'getSyncStatus') {
+        sendResponse(syncManager.currentStatus);
+        return true;
+    }
+
+    if (request.action === 'resolveConflict') {
+        syncManager.resolveConflict(request.strategy)
+            .then(() => sendResponse({ success: true }))
+            .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+    }
+
     if (request.action === 'syncNow') {
-        sendResponse({ success: false, error: 'Sync is currently disabled pending new implementation.' });
+        // Re-trigger start logic or just manual sync
+        syncManager.start()
+            .then(() => sendResponse({ success: true }))
+            .catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
 });
