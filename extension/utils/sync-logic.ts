@@ -1,8 +1,38 @@
 import { CleanBookmarkNode } from './bookmark-utils';
 
+
 export function treesAreEqual(local: CleanBookmarkNode[], remote: CleanBookmarkNode[]): boolean {
-    // Simple deep equality check for now
-    return JSON.stringify(local) === JSON.stringify(remote);
+    if (local.length !== remote.length) return false;
+
+    for (let i = 0; i < local.length; i++) {
+        if (!areNodesEqual(local[i], remote[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function areNodesEqual(nodeA: CleanBookmarkNode, nodeB: CleanBookmarkNode): boolean {
+    // Compare basic fields (ignore dateAdded)
+    if (nodeA.title !== nodeB.title) return false;
+    if (nodeA.url !== nodeB.url) return false;
+
+    // Compare IDs only if they exist (roots usually)
+    if (nodeA.id !== nodeB.id) return false;
+
+    // Compare children
+    const childrenA = nodeA.children || [];
+    const childrenB = nodeB.children || [];
+
+    if (childrenA.length !== childrenB.length) return false;
+
+    for (let i = 0; i < childrenA.length; i++) {
+        if (!areNodesEqual(childrenA[i], childrenB[i])) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 export function hasSignificantData(nodes: CleanBookmarkNode[]): boolean {

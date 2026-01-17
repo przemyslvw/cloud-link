@@ -87,4 +87,30 @@ describe('sync-logic', () => {
             expect(result).toHaveLength(2);
         });
     });
+
+    describe('treesAreEqual', () => {
+        it('should return true for identical simple trees', () => {
+            const t1: CleanBookmarkNode[] = [{ title: 'A', url: 'u1' }];
+            const t2: CleanBookmarkNode[] = [{ title: 'A', url: 'u1' }];
+            expect(treesAreEqual(t1, t2)).toBe(true);
+        });
+
+        it('should return true for trees with different timestamps but same content', () => {
+            const t1: CleanBookmarkNode[] = [{ title: 'A', url: 'u1', dateAdded: 100 }];
+            const t2: CleanBookmarkNode[] = [{ title: 'A', url: 'u1', dateAdded: 200 }];
+            expect(treesAreEqual(t1, t2)).toBe(true);
+        });
+
+        it('should return false for different titles', () => {
+            const t1: CleanBookmarkNode[] = [{ title: 'A', url: 'u1' }];
+            const t2: CleanBookmarkNode[] = [{ title: 'B', url: 'u1' }];
+            expect(treesAreEqual(t1, t2)).toBe(false);
+        });
+
+        it('should return false for different structure', () => {
+            const t1: CleanBookmarkNode[] = [{ title: 'Folder', children: [] }];
+            const t2: CleanBookmarkNode[] = [{ title: 'Folder', children: [{ title: 'b' }] }];
+            expect(treesAreEqual(t1, t2)).toBe(false);
+        });
+    });
 });
