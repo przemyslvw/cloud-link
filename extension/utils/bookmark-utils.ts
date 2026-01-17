@@ -1,6 +1,7 @@
 import { isSyncingFromRemote } from './bookmark-streams';
 
 export interface CleanBookmarkNode {
+    id?: string;
     title: string;
     url?: string;
     children?: CleanBookmarkNode[];
@@ -18,6 +19,12 @@ export function sanitizeNode(node: chrome.bookmarks.BookmarkTreeNode): CleanBook
         title: node.title,
         dateAdded: node.dateAdded
     };
+
+    // Preserve ID only for root nodes to ensure correct mapping
+    // IDs 1 (Bar), 2 (Other), 3 (Mobile) are standard in Chrome
+    if (['1', '2', '3'].includes(node.id)) {
+        clean.id = node.id;
+    }
 
     if (node.url) {
         clean.url = node.url;
@@ -51,15 +58,18 @@ export async function createBookmarksFromTree(nodes: CleanBookmarkNode[], parent
         let currentParentId = parentId;
 
         if (!currentParentId) {
-            // Logic to map root folders 'Bookmarks Bar' etc. to their IDs
-            // For simplicity in this destructive approach, we might assume standard structure or mapping
-            // But usually chrome IDs are '1' (Bar), '2' (Other).
-            // However, Firebase tree might be the array of roots.
+            // Priority 1: Use ID if available (most robust)
+            if (node.id === '1') currentParentId = '1';
+            else if (node.id === '2') currentParentId = '2';
+            else if (node.id === '3') currentParentId = '3';
 
-            // If node.title is 'Bookmarks Bar', we look up ID '1'.
-            if (node.title === 'Bookmarks Bar' || node.title === 'Pasek zakładek' || node.title === 'Zakładki') currentParentId = '1';
-            else if (node.title === 'Other Bookmarks' || node.title === 'Inne zakładki') currentParentId = '2';
-            else if (node.title === 'Mobile Bookmarks' || node.title === 'Zakładki mobilne') currentParentId = '3';
+            // Priority 2: Fallback to Title matching (case-insensitive)
+            else {
+                const lowerTitle = node.title.toLowerCase().trim();
+                if (['bookmarks bar', 'pasek zakładek', 'zakładki'].includes(lowerTitle)) currentParentId = '1';
+                else if (['other bookmarks', 'inne zakładki'].includes(lowerTitle)) currentParentId = '2';
+                else if (['mobile bookmarks', 'zakładki mobilne'].includes(lowerTitle)) currentParentId = '3';
+            }
 
             if (currentParentId && node.children) {
                 await createBookmarksFromTree(node.children, currentParentId);
@@ -83,21 +93,7 @@ export async function createBookmarksFromTree(nodes: CleanBookmarkNode[], parent
 
 
 export function cleanBookmarksForExport(nodes: chrome.bookmarks.BookmarkTreeNode[]): CleanBookmarkNode[] {
-    return nodes.map(node => {
-        const clean: CleanBookmarkNode = {
-            title: node.title
-        };
-
-        if (node.url) {
-            clean.url = node.url;
-        }
-
-        if (node.children) {
-            clean.children = cleanBookmarksForExport(node.children);
-        }
-
-        return clean;
-    });
+    return nodes.map(sanitizeNode);
 }
 
 export async function overwriteLocalBookmarks(cleanTree: CleanBookmarkNode[]): Promise<void> {

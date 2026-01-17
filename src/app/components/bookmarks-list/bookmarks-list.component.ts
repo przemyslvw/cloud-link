@@ -38,6 +38,7 @@ export class BookmarksListComponent implements OnInit {
   deleteNode(node: BookmarkTreeNode) {
     this.authService.user$.pipe(take(1)).subscribe(user => {
       if (user) {
+        console.log('Component requesting deletion for node:', node);
         this.bookmarkService.deleteBookmark(user.uid, node.id).subscribe({
           error: (err) => console.error('Error deleting bookmark:', err)
         });

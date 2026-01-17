@@ -26,6 +26,11 @@ export class BookmarkService {
     // For now, the web app is primarily a viewer or needs a major refactor to support tree editing
 
     deleteBookmark(uid: string, nodeId: string): Observable<void> {
+        if (!nodeId) {
+            console.error('deleteBookmark called with invalid nodeId:', nodeId);
+            return of(undefined);
+        }
+
         const treeRef = ref(this.db, `bookmarks/${uid}/tree`);
 
         return this.getBookmarkTree(uid).pipe(
@@ -33,7 +38,19 @@ export class BookmarkService {
             switchMap(currentTree => {
                 if (!currentTree || currentTree.length === 0) return of(undefined);
 
+                console.log('Attempting to delete node:', nodeId);
+                console.log('Current tree size:', currentTree.length);
+
                 const updatedTree = this.removeNodeFromTree(currentTree, nodeId);
+
+                console.log('Updated tree size:', updatedTree.length);
+
+                // SAFEGUARD: If we went from multiple items to 0 items, likely a bug unless we deleted the last item.
+                // Assuming we rarely delete the root folder containing everything in one go via this method?
+                if (updatedTree.length === 0 && currentTree.length > 1) {
+                    console.error('CRITICAL ERROR: Attempted to delete all bookmarks! Operation aborted.');
+                    return of(undefined);
+                }
 
                 // Update tree
                 const updateTreePromise = set(treeRef, updatedTree);
